@@ -202,7 +202,7 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     hintLabel.setText ("drag point: move   drag segment, handle or wheel: bend   "
                        "right-click: add / move point   right-click point: step / smooth   "
                        "double-click point: remove   right-click handle: reset bend   "
-                       "drag bar edges below: zoom   "
+                       "ctrl+wheel: zoom   shift+wheel: scroll   drag bar edges below: zoom   "
                        "right-click slot: rename   shift: no snap",
                        juce::dontSendNotification);
     hintLabel.setFont (juce::FontOptions (11.0f));
@@ -259,6 +259,14 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
         volumeEditor.setViewRange (start, end);
     };
     addAndMakeVisible (zoomBar);
+
+    // Wheel zoom / scroll over either grid goes through the bar, so it stays
+    // the one owner of the range and redraws itself.
+    for (auto* editor : { &timeEditor, &volumeEditor })
+        editor->onViewChangeRequested = [this] (float start, float end)
+        {
+            zoomBar.setRange (start, end, juce::sendNotification);
+        };
 
     addAndMakeVisible (timeEditor);
     addAndMakeVisible (volumeEditor);

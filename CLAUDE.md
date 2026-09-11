@@ -136,6 +136,12 @@ spacing, so zooming in has to bring the minor lines back. `PluginEditor` keeps
 both editors on one range (`ZoomBar::onRangeChanged`) so the time and volume
 grids stay lined up. The range is view state and deliberately not persisted.
 
+`ZoomBar` owns the range: ctrl/cmd + wheel and shift + wheel over a grid go out
+through `CurveEditor::onViewChangeRequested` to `ZoomBar::setRange` rather than
+moving the editor's own view, or the bar and the other grid would drift out of
+sync. A plain wheel is still segment tension, so the modifier check comes first
+in `mouseWheelMove`.
+
 The curve is stroked **per segment**, evaluating `EnvelopeCurve::shape` at
 `u = 0 … 1`, not per screen column. Sampling by column makes the polyline cut
 the corner at any point whose x falls between two columns, which is obvious as

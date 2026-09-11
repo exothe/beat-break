@@ -267,10 +267,17 @@ void ZoomBar::mouseDoubleClick (const juce::MouseEvent&)
 
 void ZoomBar::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
-    if (std::abs (wheel.deltaY) < 1.0e-4f)
+    const auto horizontal = std::abs (wheel.deltaX) > std::abs (wheel.deltaY);
+    const auto step = horizontal ? wheel.deltaX : wheel.deltaY;
+
+    if (std::abs (step) < 1.0e-4f)
         return;
 
-    zoomBy (wheel.deltaY > 0.0f ? 1.0f / 1.25f : 1.25f, positionFor (e.position.x));
+    // Same deal as over the grids: shift (or a horizontal wheel) scrolls.
+    if (e.mods.isShiftDown() || horizontal)
+        scrollBy (-step * (end - start) * 0.25f);
+    else
+        zoomBy (step > 0.0f ? 1.0f / 1.25f : 1.25f, positionFor (e.position.x));
 }
 
 void ZoomBar::zoomBy (float factor, float around)

@@ -37,6 +37,10 @@ public:
     /** Slice of the loop the grid shows, 0..1. Both editors are kept on the
         same range so the time and volume grids stay lined up. */
     void setViewRange (float start, float end);
+
+    /** Ctrl/cmd + wheel zooms and shift + wheel scrolls, but the zoom bar owns
+        the range, so the editor asks for a change rather than making one. */
+    std::function<void (float start, float end)> onViewChangeRequested;
     void setSnapEnabled (bool shouldSnap) { snapEnabled = shouldSnap; }
 
     /** Buttons in the editor act on whichever slot is currently selected. */

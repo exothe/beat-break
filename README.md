@@ -137,6 +137,14 @@ follow it so time and volume stay lined up:
 - **arrows** at the ends: step by a quarter of the visible width
 - **double-click**: fit the whole loop again
 
+Over the grids themselves:
+
+- **ctrl / cmd + wheel**: zoom, keeping whatever is under the pointer in place
+- **shift + wheel**: scroll left / right
+- a **horizontal wheel** or trackpad swipe: scroll, no modifier needed
+
+(A plain wheel over a segment still bends it.)
+
 Worth it at 2 or 4 bar loops, where a whole bar is a few centimetres wide and
 the fine grid divisions land on top of each other.
 

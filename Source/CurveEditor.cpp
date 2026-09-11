@@ -480,6 +480,38 @@ void CurveEditor::mouseDoubleClick (const juce::MouseEvent& e)
 
 void CurveEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
+    // A horizontal wheel (or a trackpad swipe) scrolls without a modifier;
+    // shift scrolls a plain wheel, ctrl / cmd zooms it. Anything else bends the
+    // segment under the pointer.
+    const auto horizontal = std::abs (wheel.deltaX) > std::abs (wheel.deltaY);
+    const auto step = horizontal ? wheel.deltaX : wheel.deltaY;
+    const auto zooming = e.mods.isCommandDown() || e.mods.isCtrlDown();
+
+    if ((zooming || e.mods.isShiftDown() || horizontal) && std::abs (step) > 1.0e-4f)
+    {
+        if (onViewChangeRequested == nullptr)
+            return;
+
+        const auto span = viewSpan();
+
+        if (zooming)
+        {
+            // Keep whatever is under the pointer under the pointer.
+            const auto anchor = juce::jlimit (viewStart, viewEnd, fromScreen (e.position).x);
+            const auto newSpan = span * (step > 0.0f ? 1.0f / 1.25f : 1.25f);
+            const auto fraction = (anchor - viewStart) / span;
+
+            onViewChangeRequested (anchor - fraction * newSpan, anchor + (1.0f - fraction) * newSpan);
+        }
+        else
+        {
+            const auto amount = -step * span * 0.25f;
+            onViewChangeRequested (viewStart + amount, viewEnd + amount);
+        }
+
+        return;
+    }
+
     const auto segment = findSegmentNear (e.position);
     if (segment < 0)
         return;
