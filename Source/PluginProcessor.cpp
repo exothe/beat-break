@@ -6,6 +6,9 @@ namespace ParamID
     static const juce::String mix         { "mix" };
     static const juce::String timeAmount  { "timeAmount" };
     static const juce::String volAmount   { "volAmount" };
+    static const juce::String volAttack   { "volAttack" };
+    static const juce::String volRelease  { "volRelease" };
+    static const juce::String volTension  { "volTension" };
     static const juce::String smoothing   { "smoothing" };
     static const juce::String loopLength  { "loopLength" };
     static const juce::String span        { "span" };
@@ -34,6 +37,9 @@ BeatBreakProcessor::BeatBreakProcessor()
     mixParam        = apvts.getRawParameterValue (ParamID::mix);
     timeAmountParam = apvts.getRawParameterValue (ParamID::timeAmount);
     volAmountParam  = apvts.getRawParameterValue (ParamID::volAmount);
+    volAttackParam  = apvts.getRawParameterValue (ParamID::volAttack);
+    volReleaseParam = apvts.getRawParameterValue (ParamID::volRelease);
+    volTensionParam = apvts.getRawParameterValue (ParamID::volTension);
     smoothingParam  = apvts.getRawParameterValue (ParamID::smoothing);
     loopLengthParam = apvts.getRawParameterValue (ParamID::loopLength);
     spanParam       = apvts.getRawParameterValue (ParamID::span);
@@ -73,11 +79,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout BeatBreakProcessor::createLa
                                                        NormalisableRange<float> (0.0f, 1.0f), 1.0f,
                                                        AudioParameterFloatAttributes().withStringFromValueFunction (percent)));
 
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamID::smoothing, 1 }, "Smoothing",
-                                                       NormalisableRange<float> (0.0f, 200.0f, 0.1f, 0.4f), 0.0f,
+    const auto milliseconds = [] (float value, int) { return String (value, 1) + " ms"; };
+
+    // Attack and release shape how fast the volume envelope may move; tension
+    // bends that move between ease-in, linear and ease-out.
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamID::volAttack, 1 }, "Volume Attack",
+                                                       NormalisableRange<float> (0.0f, 500.0f, 0.1f, 0.35f), 1.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (milliseconds)));
+
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamID::volRelease, 1 }, "Volume Release",
+                                                       NormalisableRange<float> (0.0f, 500.0f, 0.1f, 0.35f), 1.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (milliseconds)));
+
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamID::volTension, 1 }, "Volume Tension",
+                                                       NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
                                                        AudioParameterFloatAttributes()
                                                            .withStringFromValueFunction ([] (float v, int)
-                                                                                         { return String (v, 1) + " ms"; })));
+                                                                                         { return String (v, 2); })));
+
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamID::smoothing, 1 }, "Smoothing",
+                                                       NormalisableRange<float> (0.0f, 200.0f, 0.1f, 0.4f), 0.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (milliseconds)));
 
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::loopLength, 1 }, "Loop Length",
                                                         getLoopLengthChoices(), 2));
@@ -271,6 +293,9 @@ void BeatBreakProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     params.mix = mixParam->load();
     params.timeAmount = timeAmountParam->load();
     params.volAmount = volAmountParam->load();
+    params.volAttackMs = volAttackParam->load();
+    params.volReleaseMs = volReleaseParam->load();
+    params.volTension = volTensionParam->load();
     params.smoothingMs = smoothingParam->load();
     params.loopBeats = getLoopBeats();
     params.spanBeats = getSpanBeats();

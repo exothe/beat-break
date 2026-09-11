@@ -98,6 +98,9 @@ private:
     std::atomic<float>* mixParam = nullptr;
     std::atomic<float>* timeAmountParam = nullptr;
     std::atomic<float>* volAmountParam = nullptr;
+    std::atomic<float>* volAttackParam = nullptr;
+    std::atomic<float>* volReleaseParam = nullptr;
+    std::atomic<float>* volTensionParam = nullptr;
     std::atomic<float>* smoothingParam = nullptr;
     std::atomic<float>* loopLengthParam = nullptr;
     std::atomic<float>* spanParam = nullptr;

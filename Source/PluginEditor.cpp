@@ -96,6 +96,9 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
       timeAmount (p.apvts, "timeAmount", "TIME AMT"),
       smoothing (p.apvts, "smoothing", "SMOOTH"),
       volAmount (p.apvts, "volAmount", "VOL AMT"),
+      volAttack (p.apvts, "volAttack", "ATT"),
+      volRelease (p.apvts, "volRelease", "REL"),
+      volTension (p.apvts, "volTension", "TENSION"),
       mix (p.apvts, "mix", "MIX"),
       timeEnableAttach (p.apvts, "timeEnable", timeEnable),
       volEnableAttach (p.apvts, "volEnable", volEnable),
@@ -163,6 +166,9 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     addAndMakeVisible (timeAmount);
     addAndMakeVisible (smoothing);
     addAndMakeVisible (volAmount);
+    addAndMakeVisible (volAttack);
+    addAndMakeVisible (volRelease);
+    addAndMakeVisible (volTension);
     addAndMakeVisible (mix);
 
     timeSlots.onSlotClicked = [this] (int slot)
@@ -295,17 +301,50 @@ void BeatBreakEditor::resized()
         slots.setBounds (section.removeFromTop (52));
         section.removeFromTop (8);
 
-        auto side = section.removeFromRight (96);
-        for (auto* knob : knobs)
+        // Two knob columns once a section carries more than a pair, otherwise
+        // the stack runs past the bottom of the panel.
+        const auto knobColumns = knobs.size() > 2 ? 2 : 1;
+        auto side = section.removeFromRight (96 * knobColumns);
+
+        const auto knobRows = ((int) knobs.size() + knobColumns - 1) / knobColumns;
+        const auto buttonHeight = 24;
+        const auto buttonRows = knobColumns > 1 ? 1 : (int) buttons.size();
+        const auto rowHeight = juce::jlimit (52, 78,
+                                             (side.getHeight() - buttonRows * (buttonHeight + 2))
+                                                 / juce::jmax (1, knobRows) - 6);
+
+        for (size_t i = 0; i < knobs.size(); i += (size_t) knobColumns)
         {
-            knob->setBounds (side.removeFromTop (78));
+            auto row = side.removeFromTop (rowHeight);
+
+            for (int c = 0; c < knobColumns; ++c)
+            {
+                auto cell = row.removeFromLeft (row.getWidth() / (knobColumns - c));
+
+                if (i + (size_t) c < knobs.size())
+                    knobs[i + (size_t) c]->setBounds (cell);
+            }
+
             side.removeFromTop (6);
         }
 
-        for (auto* b : buttons)
+        if (knobColumns > 1)
         {
-            b->setBounds (side.removeFromTop (24).reduced (4, 2));
-            side.removeFromTop (2);
+            // One wide column of buttons would waste the height the extra knob
+            // rows need, so lay them across instead.
+            auto row = side.removeFromTop (buttonHeight);
+
+            for (size_t i = 0; i < buttons.size(); ++i)
+                buttons[i]->setBounds (row.removeFromLeft (row.getWidth() / (int) (buttons.size() - i))
+                                           .reduced (2, 1));
+        }
+        else
+        {
+            for (auto* b : buttons)
+            {
+                b->setBounds (side.removeFromTop (buttonHeight).reduced (4, 2));
+                side.removeFromTop (2);
+            }
         }
 
         editor.setBounds (section.withTrimmedRight (8));
@@ -315,5 +354,6 @@ void BeatBreakEditor::resized()
                    { &timeAmount, &smoothing }, { &timeClear, &timeReverse, &timeFactory });
 
     layoutSection (area, volEnable, volSlotName, volumeSlots, volumeEditor,
-                   { &volAmount }, { &volClear, &volReverse, &volFactory });
+                   { &volAmount, &volTension, &volAttack, &volRelease },
+                   { &volClear, &volReverse, &volFactory });
 }

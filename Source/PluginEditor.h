@@ -59,7 +59,7 @@ private:
     CurveEditor timeEditor, volumeEditor;
     SlotGrid timeSlots, volumeSlots;
 
-    LabelledKnob timeAmount, smoothing, volAmount, mix;
+    LabelledKnob timeAmount, smoothing, volAmount, volAttack, volRelease, volTension, mix;
 
     juce::ToggleButton timeEnable { "TIME" }, volEnable { "VOLUME" }, syncButton { "Host Sync" };
     juce::ToggleButton snapButton { "Snap" };

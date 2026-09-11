@@ -81,6 +81,8 @@ hard splices do not click.
 | **Time Amount** | Morph the time curve toward unity playback |
 | **Smoothing** | Glide on the read position — turns jumps into pitch slides |
 | **Volume Amount** | Morph the volume curve toward unity gain |
+| **ATT / REL** | Time a full-scale rise / fall of the volume envelope takes, 0–500 ms |
+| **TENSION** | Bends that move: +1 jumps away and lands slowly, -1 creeps out and snaps home, 0 linear |
 | **Mix** | Dry/wet |
 | **TIME / VOLUME** | Enable each curve independently |
 | **Slots 1–36** | Per-curve pattern slots, automatable so a host can switch patterns |

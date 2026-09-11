@@ -54,7 +54,8 @@ Signal flow per sample, all in `GrossEngine::process`:
 2. `y` = time curve at `x`, morphed toward the unity line by **Time Amount**.
 3. Mapped read position in beats: `loopStart + loopBeats − (1 − y)·spanBeats`.
 4. `delay = now − mapped`, read from the ring buffer with a Catmull-Rom kernel.
-5. Volume curve at `x` → gain (1 ms glide), then **Mix** against dry.
+5. Volume curve at `x` → gain through the attack/release envelope, then
+   **Mix** against dry.
 
 ### Invariants that are easy to break
 
@@ -107,13 +108,29 @@ will not reach the audio thread.
 | `Source/PluginEditor.*` | Window layout, 36-slot grids, knobs |
 
 Parameter IDs (`ParamID` in `PluginProcessor.cpp`): `mix`, `timeAmount`,
-`volAmount`, `smoothing`, `loopLength`, `span`, `timeSlot`, `volSlot`,
+`volAmount`, `volAttack`, `volRelease`, `volTension`, `smoothing`,
+`loopLength`, `span`, `timeSlot`, `volSlot`,
 `timeEnable`, `volEnable`, `sync`, `freeTempo`. Slots are `AudioParameterChoice`
 so hosts can automate pattern switching, which is how Gross Beat is played.
 
 State is the APVTS tree plus a `curves` child holding all 72 curves as text
 attributes `t0…t35` / `v0…v35`. Changing `EnvelopeCurve::toString`'s format
 breaks saved sessions.
+
+### Volume envelope
+
+**Attack / Release** are the time a *full-scale* (0 → 1) move takes, so the
+envelope is a slew limiter: a curve segment that ramps slower than the knob
+passes through untouched, only steps get shaped. Both floor at 0.2 ms, which is
+what keeps a hard gate from clicking with the knobs at zero.
+
+**Tension** bends the shape without changing the length: the per-sample rate is
+`k · travelled^(1 − 1/k)` with `k = 2^(−tension·2)`, which integrates to exactly
+the knob's time for any `k`. Positive tension (`k < 1`) races away from the
+start and lands slowly, negative creeps out and snaps home. The rate is clamped
+to `[0.002, 64]` — without that the stiff ends of extreme tension either stall
+or overshoot the intended length by more than a few percent, which is exactly
+what `EngineTests` check 10 measures.
 
 ### Declicking
 

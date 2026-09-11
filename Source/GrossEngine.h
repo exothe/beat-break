@@ -21,6 +21,9 @@ public:
         float timeAmount = 1.0f;   // morph between unity playback and the curve
         float volAmount = 1.0f;    // morph between unity gain and the curve
         float smoothingMs = 0.0f;  // glide applied to the read position
+        float volAttackMs = 0.0f;  // how long a rise of the volume envelope takes
+        float volReleaseMs = 0.0f; // how long a fall takes
+        float volTension = 0.0f;   // -1 slow start / 0 linear / +1 slow landing
         float loopBeats = 4.0f;    // pattern length
         float spanBeats = 4.0f;    // how much buffer the curve's y axis covers
         bool timeEnabled = true;

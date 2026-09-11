@@ -335,6 +335,124 @@ int main()
                                    + juce::String (maxStep, 4) + ")");
     }
 
+
+    // ---- 10. volume attack / release / tension -----------------------------
+    {
+        EnvelopeCurve unity;
+        unity.setToRamp();
+        const auto gate = FactoryPatterns::getVolumeCurve (2);   // "Gate 1/8"
+
+        // With a unity time curve the read position is "now", so the output
+        // divided by the input ramp is exactly the envelope's gain.
+        const auto gainOf = [] (const RenderResult& r, size_t frame)
+        {
+            const auto in = (double) positionSignal (r.index[frame]);
+            return in > 1.0e-6 ? (double) r.output[frame] / in : 1.0;
+        };
+
+        // Seconds the envelope takes to travel from unity to `level` (falling)
+        // or from silence to `level` (rising), on the first move after `from`.
+        const auto travelTime = [&] (const RenderResult& r, size_t from, double level, bool falling)
+        {
+            size_t started = 0;
+
+            for (size_t i = from; i < r.output.size(); ++i)
+            {
+                const auto g = gainOf (r, i);
+
+                if (started == 0)
+                {
+                    if (falling ? g < 0.99 : g > 0.01)
+                        started = i;
+
+                    continue;
+                }
+
+                if (falling ? g < level : g > level)
+                    return (double) (i - started) / sr;
+            }
+
+            return -1.0;
+        };
+
+        // Probe inside a settled open window (as check 6 does), so the first
+        // move the scan sees is the gate closing.
+        const auto eighth = samplesPerLoop / 8.0;
+        const auto probe = (size_t) (samplesPerLoop * 4.0 + eighth * 0.3);
+
+        auto slow = defaultParams();
+        slow.volAttackMs = 50.0f;
+        slow.volReleaseMs = 50.0f;
+        const auto rSlow = render (unity, gate, 12.0, slow);
+
+        // Full scale takes the knob's time, so 1 -> 0.02 is ~0.98 of 50 ms.
+        const auto fall = travelTime (rSlow, probe, 0.02, true);
+        check (fall > 0.04 && fall < 0.06, "50 ms release takes 50 ms to close (measured "
+                                               + juce::String (fall * 1000.0, 1) + " ms)");
+
+        // Scan from a settled closed window so the next move is the gate opening.
+        const auto closedProbe = (size_t) (samplesPerLoop * 4.0 + eighth * 0.9);
+        const auto rise = travelTime (rSlow, closedProbe, 0.98, false);
+        check (rise > 0.04 && rise < 0.06, "50 ms attack takes 50 ms to open (measured "
+                                               + juce::String (rise * 1000.0, 1) + " ms)");
+
+        auto fast = defaultParams();
+        fast.volAttackMs = 0.0f;
+        fast.volReleaseMs = 0.0f;
+        const auto rFast = render (unity, gate, 12.0, fast);
+        const auto fastFall = travelTime (rFast, probe, 0.02, true);
+        check (fastFall >= 0.0 && fastFall < 0.001, "zero release still closes inside 1 ms (measured "
+                                                        + juce::String (fastFall * 1000.0, 3) + " ms)");
+
+        // Tension keeps the length of the move and bends its shape: +1 races
+        // away from unity and lands slowly, -1 creeps out and snaps home.
+        const auto gainAfterFall = [&] (const RenderResult& r, double seconds)
+        {
+            for (size_t i = probe; i < r.output.size(); ++i)
+                if (gainOf (r, i) < 0.99)
+                    return gainOf (r, i + (size_t) (seconds * sr));
+
+            return -1.0;
+        };
+
+        auto easedOut = slow;
+        easedOut.volTension = 1.0f;
+        const auto rOut = render (unity, gate, 12.0, easedOut);
+
+        auto easedIn = slow;
+        easedIn.volTension = -1.0f;
+        const auto rIn = render (unity, gate, 12.0, easedIn);
+
+        const auto midLinear = gainAfterFall (rSlow, 0.025);
+        const auto midOut = gainAfterFall (rOut, 0.025);
+        const auto midIn = gainAfterFall (rIn, 0.025);
+
+        check (midOut < midLinear && midLinear < midIn,
+               "tension orders the fall's midpoint (+1 " + juce::String (midOut, 3)
+                   + " < linear " + juce::String (midLinear, 3)
+                   + " < -1 " + juce::String (midIn, 3) + ")");
+
+        // Measured from the gate's own close point, since tension moves where
+        // the envelope crosses any single threshold but not the total length.
+        const auto closeFrame = (size_t) (samplesPerLoop * (4.0 + 0.6 / 8.0));
+
+        const auto timeToSilence = [&] (const RenderResult& r)
+        {
+            for (size_t i = closeFrame; i < r.output.size(); ++i)
+                if (gainOf (r, i) < 0.005)
+                    return (double) (i - closeFrame) / sr;
+
+            return -1.0;
+        };
+
+        const auto fallOut = timeToSilence (rOut);
+        const auto fallIn = timeToSilence (rIn);
+        check (fallOut > 0.045 && fallOut < 0.056 && fallIn > 0.045 && fallIn < 0.056,
+               "tension leaves the 50 ms release length alone (+1 "
+                   + juce::String (fallOut * 1000.0, 1) + " ms, -1 "
+                   + juce::String (fallIn * 1000.0, 1) + " ms)");
+    }
+
     std::cout << (failures == 0 ? "all checks passed" : juce::String (failures) + " CHECK(S) FAILED")
               << std::endl;
 

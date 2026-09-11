@@ -81,8 +81,28 @@ void GrossEngine::process (juce::AudioBuffer<float>& buffer,
     const auto samplesPerBeat = beatsPerSample > 1.0e-12 ? 1.0 / beatsPerSample : sr;
     const auto maxDelay = (float) (ringSize - 8);
 
-    // Gain glide: fixed 1 ms, only there to keep steps from clicking.
-    const auto gainCoeff = (float) (1.0 - std::exp (-1.0 / (0.001 * sr)));
+    // ---- volume envelope -------------------------------------------------
+    // Attack and release are the time a full-scale (0 -> 1) move takes, so the
+    // envelope is a slew limiter: slower ramps in the curve pass through
+    // untouched, steps get shaped. The 0.2 ms floor is what stops a hard step
+    // from clicking when both knobs are at zero.
+    const auto envStep = [this] (float milliseconds)
+    {
+        const auto seconds = juce::jmax (0.0002, (double) milliseconds * 0.001);
+        return (float) (1.0 / (seconds * sr));
+    };
+
+    const auto attackStep = envStep (params.volAttackMs);
+    const auto releaseStep = envStep (params.volReleaseMs);
+
+    // Tension bends the shape of the move without changing how long it takes:
+    // with a rate of k * travelled^(1 - 1/k) the full-scale trip still
+    // integrates to exactly the knob's time for any k. k < 1 races away and
+    // lands slowly (exponential-sounding), k > 1 creeps out and snaps home.
+    const auto tension = juce::jlimit (-1.0f, 1.0f, params.volTension);
+    const auto shaped = std::abs (tension) > 1.0e-4f;
+    const auto k = std::pow (2.0f, -tension * 2.0f);
+    const auto bendExponent = 1.0f - 1.0f / k;
 
     const auto smoothingSeconds = (double) params.smoothingMs * 0.001;
     const auto delayCoeff = smoothingSeconds > 1.0e-5
@@ -152,7 +172,26 @@ void GrossEngine::process (juce::AudioBuffer<float>& buffer,
             targetGain = 1.0f + (curveGain - 1.0f) * params.volAmount;
         }
 
-        smoothedGain += (targetGain - smoothedGain) * gainCoeff;
+        const auto diff = targetGain - smoothedGain;
+        const auto distance = std::abs (diff);
+
+        if (distance > 1.0e-7f)
+        {
+            auto step = diff > 0.0f ? attackStep : releaseStep;
+
+            if (shaped)
+            {
+                // How far through a full-scale move we already are.
+                const auto travelled = juce::jlimit (1.0e-6f, 1.0f, 1.0f - distance);
+                step *= juce::jlimit (0.002f, 64.0f, k * std::pow (travelled, bendExponent));
+            }
+
+            smoothedGain += juce::jmin (step, distance) * (diff > 0.0f ? 1.0f : -1.0f);
+        }
+        else
+        {
+            smoothedGain = targetGain;
+        }
 
         // ---- render --------------------------------------------------------
         const auto fadeMix = fadeSamplesLeft > 0
