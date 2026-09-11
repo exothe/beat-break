@@ -51,14 +51,30 @@ juce::Rectangle<float> CurveEditor::plotBounds() const
 juce::Point<float> CurveEditor::toScreen (float x, float y) const
 {
     const auto r = plotBounds();
-    return { r.getX() + x * r.getWidth(), r.getBottom() - y * r.getHeight() };
+    return { r.getX() + (x - viewStart) / viewSpan() * r.getWidth(),
+             r.getBottom() - y * r.getHeight() };
 }
 
 juce::Point<float> CurveEditor::fromScreen (juce::Point<float> p) const
 {
     const auto r = plotBounds();
-    return { juce::jlimit (0.0f, 1.0f, (p.x - r.getX()) / juce::jmax (1.0f, r.getWidth())),
+    const auto x = viewStart + (p.x - r.getX()) / juce::jmax (1.0f, r.getWidth()) * viewSpan();
+
+    return { juce::jlimit (0.0f, 1.0f, x),
              juce::jlimit (0.0f, 1.0f, (r.getBottom() - p.y) / juce::jmax (1.0f, r.getHeight())) };
+}
+
+void CurveEditor::setViewRange (float start, float end)
+{
+    const auto newStart = juce::jlimit (0.0f, 1.0f, start);
+    const auto newEnd = juce::jlimit (newStart + 1.0e-4f, 1.0f, end);
+
+    if (juce::approximatelyEqual (newStart, viewStart) && juce::approximatelyEqual (newEnd, viewEnd))
+        return;
+
+    viewStart = newStart;
+    viewEnd = newEnd;
+    repaint();
 }
 
 float CurveEditor::snapX (float x, bool fine) const
@@ -177,17 +193,20 @@ void CurveEditor::paint (juce::Graphics& g)
 
     // Fine divisions (a 4 bar loop needs 128 of them for a sixteenth) would
     // otherwise fill the grid in solid, so minor lines drop out once they are
-    // closer than a few pixels; the beat lines always stay.
-    const auto drawMinorColumns = r.getWidth() / (float) divisions >= 4.0f;
+    // closer than a few pixels; the beat lines always stay. Zooming in brings
+    // them back, since the spacing is measured on what is actually on screen.
+    const auto drawMinorColumns = r.getWidth() / ((float) divisions * viewSpan()) >= 4.0f;
+    const auto firstColumn = (int) std::floor (viewStart * (float) divisions);
+    const auto lastColumn = (int) std::ceil (viewEnd * (float) divisions);
 
-    for (int i = 0; i <= divisions; ++i)
+    for (int i = juce::jmax (0, firstColumn); i <= juce::jmin (divisions, lastColumn); ++i)
     {
         const auto onBeat = (i * beatsPerLoop) % divisions == 0;
 
         if (! onBeat && ! drawMinorColumns)
             continue;
 
-        const auto x = r.getX() + r.getWidth() * (float) i / (float) divisions;
+        const auto x = toScreen ((float) i / (float) divisions, 0.0f).x;
         g.setColour (onBeat ? beatColour : gridColour);
         g.drawVerticalLine ((int) std::round (x), r.getY(), r.getBottom());
     }
@@ -240,7 +259,7 @@ void CurveEditor::paint (juce::Graphics& g)
         }
 
         const auto widthPx = toScreen (b.x, 0.0f).x - toScreen (a.x, 0.0f).x;
-        const auto steps = juce::jlimit (2, 512, (int) std::ceil (widthPx));
+        const auto steps = juce::jlimit (2, 2048, (int) std::ceil (widthPx));
 
         for (int s = 1; s <= steps; ++s)
         {
@@ -309,7 +328,7 @@ void CurveEditor::paint (juce::Graphics& g)
 
     // ---- playhead -----------------------------------------------------------
     const auto phase = proc.getLoopPhase();
-    const auto phaseX = r.getX() + r.getWidth() * phase;
+    const auto phaseX = toScreen (phase, 0.0f).x;
     g.setColour (playheadColour);
     g.drawVerticalLine ((int) std::round (phaseX), r.getY(), r.getBottom());
 

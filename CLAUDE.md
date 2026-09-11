@@ -124,6 +124,18 @@ the former. Release the focus while the menu is up and `checkButtonState` in
 `hasAnyJuceCompHadFocus`, and kills the menu ~10 ms after it opened - on Windows
 that looked like the menu flashing and vanishing on a single right-click.
 
+### Horizontal zoom
+
+`CurveEditor::setViewRange` holds the visible slice of the loop, and
+`toScreen` / `fromScreen` are the only two places that know about it - the grid
+columns, the curve path, the point hit-testing and the playhead all go through
+them, so nothing else needs to care. Two consequences to keep in mind when
+adding to `paint`: grid columns are iterated from `viewStart`/`viewEnd` rather
+than from 0, and the "is this line too dense to draw" test measures on-screen
+spacing, so zooming in has to bring the minor lines back. `PluginEditor` keeps
+both editors on one range (`ZoomBar::onRangeChanged`) so the time and volume
+grids stay lined up. The range is view state and deliberately not persisted.
+
 The curve is stroked **per segment**, evaluating `EnvelopeCurve::shape` at
 `u = 0 … 1`, not per screen column. Sampling by column makes the polyline cut
 the corner at any point whose x falls between two columns, which is obvious as
@@ -155,6 +167,7 @@ will not reach the audio thread.
 | `Source/FactoryPatterns.*` | 36 time + 36 volume patterns, built from `appendPlay`/`slicedTime`/`gate`/`duck`/… helpers; slot 0 of each is neutral |
 | `Source/PluginProcessor.*` | APVTS parameters, state, playhead/tempo, snapshot publishing |
 | `Source/CurveEditor.*` | The editable grid (also renders the unity line and playhead) |
+| `Source/ZoomBar.*` | Edison-style horizontal zoom / scroll bar under both grids |
 | `Source/PluginEditor.*` | Window layout, 36-slot grids, knobs |
 
 Parameter IDs (`ParamID` in `PluginProcessor.cpp`): `mix`, `timeAmount`,

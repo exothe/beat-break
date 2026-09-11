@@ -125,6 +125,21 @@ the slot names and the grid / snap settings.
 The white playhead line and dot show the live loop position and what the curve
 is currently doing.
 
+## Zooming
+
+The bar along the bottom is the horizontal zoom, Edison style, and both grids
+follow it so time and volume stay lined up:
+
+- **drag an edge** of the block: zoom in / out
+- **drag the middle**: scroll
+- **click the track** either side: jump the view there
+- **mouse wheel** over the bar: zoom around the pointer
+- **arrows** at the ends: step by a quarter of the visible width
+- **double-click**: fit the whole loop again
+
+Worth it at 2 or 4 bar loops, where a whole bar is a few centimetres wide and
+the fine grid divisions land on top of each other.
+
 ## Factory slots
 
 36 time patterns (stutters 1/4 … 1/32, rolls, half/quarter speed, reverse

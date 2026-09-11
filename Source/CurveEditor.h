@@ -33,6 +33,10 @@ public:
 
     void setGridDivisions (int divisions);
     int getGridDivisions() const noexcept { return gridDivisions; }
+
+    /** Slice of the loop the grid shows, 0..1. Both editors are kept on the
+        same range so the time and volume grids stay lined up. */
+    void setViewRange (float start, float end);
     void setSnapEnabled (bool shouldSnap) { snapEnabled = shouldSnap; }
 
     /** Buttons in the editor act on whichever slot is currently selected. */
@@ -82,6 +86,9 @@ private:
 
     int gridDivisions = 16;
     bool snapEnabled = true;
+
+    float viewStart = 0.0f, viewEnd = 1.0f;
+    float viewSpan() const noexcept { return juce::jmax (1.0e-4f, viewEnd - viewStart); }
 
     int draggedPoint = -1;
     int tensionSegment = -1;

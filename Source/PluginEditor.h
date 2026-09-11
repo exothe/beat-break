@@ -1,6 +1,8 @@
 #pragma once
 
 #include "CurveEditor.h"
+#include "ZoomBar.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 class BeatBreakProcessor;
@@ -98,6 +100,7 @@ private:
     juce::ToggleButton timeEnable { "TIME" }, volEnable { "VOLUME" }, syncButton { "Host Sync" };
     juce::ToggleButton snapButton { "Snap" };
     juce::ComboBox loopLengthBox, spanBox, gridBox;
+    ZoomBar zoomBar;
     juce::Slider freeTempoSlider;
 
     juce::TextButton presetSave { "Save" }, presetLoad { "Load" };

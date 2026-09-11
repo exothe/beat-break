@@ -49,6 +49,7 @@ target_sources(BeatBreak PRIVATE
     Source/PluginEditor.cpp
     Source/GrossEngine.cpp
     Source/CurveEditor.cpp
+    Source/ZoomBar.cpp
     Source/FactoryPatterns.cpp)
 
 target_compile_definitions(BeatBreak PUBLIC

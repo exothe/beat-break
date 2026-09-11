@@ -10,6 +10,8 @@ namespace
 {
     /** Grid divisions across the whole loop, so a 4 bar loop needs the fine end
         of this list to land on a sixteenth. */
+    constexpr int zoomBarHeight = 22;
+
     constexpr int gridChoices[] = { 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256 };
     constexpr int numGridChoices = (int) (sizeof (gridChoices) / sizeof (gridChoices[0]));
 
@@ -200,6 +202,7 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     hintLabel.setText ("drag point: move   drag segment, handle or wheel: bend   "
                        "right-click: add / move point   right-click point: step / smooth   "
                        "double-click point: remove   right-click handle: reset bend   "
+                       "drag bar edges below: zoom   "
                        "right-click slot: rename   shift: no snap",
                        juce::dontSendNotification);
     hintLabel.setFont (juce::FontOptions (11.0f));
@@ -249,6 +252,13 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     addAndMakeVisible (timeEnable);
     addAndMakeVisible (volEnable);
     addAndMakeVisible (syncButton);
+
+    zoomBar.onRangeChanged = [this] (float start, float end)
+    {
+        timeEditor.setViewRange (start, end);
+        volumeEditor.setViewRange (start, end);
+    };
+    addAndMakeVisible (zoomBar);
 
     addAndMakeVisible (timeEditor);
     addAndMakeVisible (volumeEditor);
@@ -484,6 +494,9 @@ void BeatBreakEditor::timerCallback()
     if (snapButton.getToggleState() != proc.isSnapEnabled())
         applySnap();
 
+    zoomBar.setPlayhead (proc.getLoopPhase());
+    zoomBar.setBeatsPerLoop (juce::roundToInt (proc.getLoopBeats()));
+
     // With no host tempo (the standalone app) the free tempo is what actually
     // drives the engine, so leave it editable even when Host Sync is on.
     const auto syncing = proc.apvts.getRawParameterValue ("sync")->load() > 0.5f;
@@ -506,6 +519,7 @@ void BeatBreakEditor::paint (juce::Graphics& g)
 
     auto area = getLocalBounds().reduced (10);
     area.removeFromTop (46);
+    area.removeFromBottom (zoomBarHeight);
 
     const auto halfHeight = area.getHeight() / 2;
     panel (area.removeFromTop (halfHeight).reduced (0, 4), accentTime);
@@ -562,6 +576,11 @@ void BeatBreakEditor::resized()
     syncButton.setBounds (controls.removeFromLeft (94).reduced (2, 0));
     freeTempoSlider.setBounds (controls.removeFromLeft (200).reduced (2, 0));
     hintLabel.setBounds (controls.reduced (6, 0));
+
+    // ---- zoom bar along the bottom ------------------------------------------
+    // Trimmed on the right so the window's resizer corner does not sit on top
+    // of the bar's step arrow.
+    zoomBar.setBounds (area.removeFromBottom (zoomBarHeight).withTrimmedTop (4).withTrimmedRight (10));
 
     // ---- the two halves -----------------------------------------------------
     const auto halfHeight = area.getHeight() / 2;
