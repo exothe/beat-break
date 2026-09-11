@@ -39,12 +39,12 @@ void LabelledKnob::paint (juce::Graphics& g)
 
 //==============================================================================
 
-SlotGrid::SlotGrid (int numSlots, std::function<juce::String (int)> nameForSlot)
+SlotGrid::SlotGrid (int numSlots, std::function<juce::String (int)> nameSource)
+    : nameForSlot (std::move (nameSource))
 {
     for (int i = 0; i < numSlots; ++i)
     {
-        auto* b = buttons.add (new juce::TextButton (juce::String (i + 1)));
-        b->setTooltip (nameForSlot != nullptr ? nameForSlot (i) : juce::String());
+        auto* b = buttons.add (new SlotButton (juce::String (i + 1)));
         b->setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight
                               | juce::Button::ConnectedOnTop | juce::Button::ConnectedOnBottom);
         b->onClick = [this, i]
@@ -52,7 +52,28 @@ SlotGrid::SlotGrid (int numSlots, std::function<juce::String (int)> nameForSlot)
             if (onSlotClicked != nullptr)
                 onSlotClicked (i);
         };
+        b->onRightClick = [this, i]
+        {
+            if (onSlotRightClicked != nullptr)
+                onSlotRightClicked (i);
+        };
         addAndMakeVisible (b);
+    }
+
+    refreshNames();
+}
+
+void SlotGrid::refreshNames()
+{
+    if (nameForSlot == nullptr)
+        return;
+
+    for (int i = 0; i < buttons.size(); ++i)
+    {
+        const auto name = nameForSlot (i);
+
+        if (buttons[i]->getTooltip() != name)
+            buttons[i]->setTooltip (name);
     }
 }
 
@@ -91,8 +112,8 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
       proc (p),
       timeEditor (p, CurveEditor::Mode::time),
       volumeEditor (p, CurveEditor::Mode::volume),
-      timeSlots (BeatBreakProcessor::numSlots, [] (int i) { return FactoryPatterns::getTimeName (i); }),
-      volumeSlots (BeatBreakProcessor::numSlots, [] (int i) { return FactoryPatterns::getVolumeName (i); }),
+      timeSlots (BeatBreakProcessor::numSlots, [&p] (int i) { return p.getSlotName (true, i); }),
+      volumeSlots (BeatBreakProcessor::numSlots, [&p] (int i) { return p.getSlotName (false, i); }),
       timeAmount (p.apvts, "timeAmount", "TIME AMT"),
       smoothing (p.apvts, "smoothing", "SMOOTH"),
       volAmount (p.apvts, "volAmount", "VOL AMT"),
@@ -117,7 +138,7 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     addAndMakeVisible (titleLabel);
 
     hintLabel.setText ("double-click: add / remove point   drag segment or wheel: bend   "
-                       "right-click point: step / smooth   shift: no snap",
+                       "right-click point: step / smooth   right-click slot: rename   shift: no snap",
                        juce::dontSendNotification);
     hintLabel.setFont (juce::FontOptions (11.0f));
     hintLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.4f));
@@ -183,12 +204,19 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
             param->setValueNotifyingHost (param->convertTo0to1 ((float) slot));
     };
 
+    timeSlots.onSlotRightClicked   = [this] (int slot) { showSlotMenu (true, slot); };
+    volumeSlots.onSlotRightClicked = [this] (int slot) { showSlotMenu (false, slot); };
+
+    presetSave.onClick = [this] { savePreset(); };
+    presetLoad.onClick = [this] { loadPreset(); };
+
     const auto styleSmall = [] (juce::TextButton& b)
     {
         b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff262a35));
     };
 
-    for (auto* b : { &timeClear, &timeReverse, &timeFactory, &volClear, &volReverse, &volFactory })
+    for (auto* b : { &presetSave, &presetLoad, &timeClear, &timeReverse, &timeFactory,
+                     &volClear, &volReverse, &volFactory })
     {
         styleSmall (*b);
         addAndMakeVisible (b);
@@ -220,6 +248,120 @@ void BeatBreakEditor::applyGridDivisions()
     volumeEditor.setGridDivisions (divisions[index]);
 }
 
+void BeatBreakEditor::showSlotMenu (bool timeCurve, int slot)
+{
+    const auto factoryName = timeCurve ? FactoryPatterns::getTimeName (slot)
+                                       : FactoryPatterns::getVolumeName (slot);
+    const auto renamed = proc.getSlotName (timeCurve, slot) != factoryName;
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (proc.getSlotName (timeCurve, slot));
+    menu.addItem (1, "Rename...");
+    menu.addItem (2, "Use factory name (" + factoryName + ")", renamed);
+
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, timeCurve, slot] (int result)
+    {
+        if (result == 1)
+            renameSlot (timeCurve, slot);
+        else if (result == 2)
+            proc.setSlotName (timeCurve, slot, {});
+    });
+}
+
+void BeatBreakEditor::renameSlot (bool timeCurve, int slot)
+{
+    auto* window = new juce::AlertWindow (timeCurve ? "Rename time slot " + juce::String (slot + 1)
+                                                    : "Rename volume slot " + juce::String (slot + 1),
+                                          "An empty name puts the factory one back.",
+                                          juce::MessageBoxIconType::NoIcon);
+
+    window->addTextEditor ("name", proc.getSlotName (timeCurve, slot), "Name");
+    window->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    window->enterModalState (true, juce::ModalCallbackFunction::create (
+        [this, window, timeCurve, slot] (int result)
+        {
+            if (result == 1)
+            {
+                auto name = window->getTextEditorContents ("name");
+
+                // A name that just repeats the factory one is not a rename.
+                const auto factoryName = timeCurve ? FactoryPatterns::getTimeName (slot)
+                                                   : FactoryPatterns::getVolumeName (slot);
+                proc.setSlotName (timeCurve, slot, name.trim() == factoryName ? juce::String() : name);
+            }
+
+            delete window;
+        }), false);
+}
+
+void BeatBreakEditor::savePreset()
+{
+    const auto directory = BeatBreakProcessor::getPresetDirectory();
+    directory.createDirectory();
+
+    chooser = std::make_unique<juce::FileChooser> ("Save preset",
+                                                   directory.getChildFile ("Preset" + BeatBreakProcessor::getPresetExtension()),
+                                                   "*" + BeatBreakProcessor::getPresetExtension());
+
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode
+                              | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              auto file = fc.getResult();
+
+                              if (file == juce::File())
+                                  return;
+
+                              if (! file.hasFileExtension (BeatBreakProcessor::getPresetExtension()))
+                                  file = file.withFileExtension (BeatBreakProcessor::getPresetExtension());
+
+                              if (! proc.savePreset (file))
+                                  juce::NativeMessageBox::showAsync (
+                                      juce::MessageBoxOptions()
+                                          .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                          .withTitle ("BeatBreak")
+                                          .withMessage ("Could not write " + file.getFullPathName())
+                                          .withButton ("OK"),
+                                      nullptr);
+                          });
+}
+
+void BeatBreakEditor::loadPreset()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Load preset",
+                                                   BeatBreakProcessor::getPresetDirectory(),
+                                                   "*" + BeatBreakProcessor::getPresetExtension());
+
+    chooser->launchAsync (juce::FileBrowserComponent::openMode
+                              | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+
+                              if (file == juce::File() || ! file.existsAsFile())
+                                  return;
+
+                              if (proc.loadPreset (file))
+                              {
+                                  timerCallback();
+                                  repaint();
+                              }
+                              else
+                              {
+                                  juce::NativeMessageBox::showAsync (
+                                      juce::MessageBoxOptions()
+                                          .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                          .withTitle ("BeatBreak")
+                                          .withMessage (file.getFileName() + " is not a BeatBreak preset")
+                                          .withButton ("OK"),
+                                      nullptr);
+                              }
+                          });
+}
+
 void BeatBreakEditor::timerCallback()
 {
     const auto t = proc.getActiveTimeSlot();
@@ -228,8 +370,12 @@ void BeatBreakEditor::timerCallback()
     timeSlots.setSelectedSlot (t);
     volumeSlots.setSelectedSlot (v);
 
-    timeSlotName.setText (FactoryPatterns::getTimeName (t), juce::dontSendNotification);
-    volSlotName.setText (FactoryPatterns::getVolumeName (v), juce::dontSendNotification);
+    timeSlotName.setText (proc.getSlotName (true, t), juce::dontSendNotification);
+    volSlotName.setText (proc.getSlotName (false, v), juce::dontSendNotification);
+
+    // Cheap enough at 15 Hz, and it catches renames a preset load brought in.
+    timeSlots.refreshNames();
+    volumeSlots.refreshNames();
 
     // With no host tempo (the standalone app) the free tempo is what actually
     // drives the engine, so leave it editable even when Host Sync is on.
@@ -270,6 +416,10 @@ void BeatBreakEditor::resized()
     header.removeFromRight (4);
     mix.setBounds (header.removeFromRight (74));
     header.removeFromRight (10);
+
+    auto presets = header.removeFromRight (128).withTrimmedTop (12).withTrimmedBottom (8);
+    presetLoad.setBounds (presets.removeFromRight (62).reduced (2, 0));
+    presetSave.setBounds (presets.removeFromRight (62).reduced (2, 0));
 
     auto controls = header.withTrimmedTop (10).withTrimmedBottom (6);
     loopLengthBox.setBounds (controls.removeFromLeft (96).reduced (2, 0));

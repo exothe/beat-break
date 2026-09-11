@@ -22,6 +22,26 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
 };
 
+/** A slot button: left click selects, right click asks for the rename menu. */
+class SlotButton final : public juce::TextButton
+{
+public:
+    using juce::TextButton::TextButton;
+
+    std::function<void()> onRightClick;
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && onRightClick != nullptr)
+        {
+            onRightClick();
+            return;
+        }
+
+        juce::TextButton::mouseDown (e);
+    }
+};
+
 /** 36 slot buttons, laid out 12 across, Gross Beat style. */
 class SlotGrid final : public juce::Component
 {
@@ -31,10 +51,15 @@ public:
     void resized() override;
     void setSelectedSlot (int slot);
 
+    /** Re-reads every slot name into the tooltips. */
+    void refreshNames();
+
     std::function<void (int)> onSlotClicked;
+    std::function<void (int)> onSlotRightClicked;
 
 private:
-    juce::OwnedArray<juce::TextButton> buttons;
+    juce::OwnedArray<SlotButton> buttons;
+    std::function<juce::String (int)> nameForSlot;
     int selected = -1;
 };
 
@@ -53,6 +78,10 @@ public:
 private:
     void timerCallback() override;
     void applyGridDivisions();
+    void showSlotMenu (bool timeCurve, int slot);
+    void renameSlot (bool timeCurve, int slot);
+    void savePreset();
+    void loadPreset();
 
     BeatBreakProcessor& proc;
 
@@ -66,10 +95,16 @@ private:
     juce::ComboBox loopLengthBox, spanBox, gridBox;
     juce::Slider freeTempoSlider;
 
+    juce::TextButton presetSave { "Save" }, presetLoad { "Load" };
+    std::unique_ptr<juce::FileChooser> chooser;
+
     juce::TextButton timeClear { "Reset" }, timeReverse { "Reverse" }, timeFactory { "Factory" };
     juce::TextButton volClear { "Reset" }, volReverse { "Reverse" }, volFactory { "Factory" };
 
     juce::Label titleLabel, timeSlotName, volSlotName, hintLabel;
+
+    /** Slot names only ever showed up in tooltips, which need one of these. */
+    juce::TooltipWindow tooltips { this, 450 };
 
     juce::AudioProcessorValueTreeState::ButtonAttachment timeEnableAttach, volEnableAttach, syncAttach;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment loopAttach, spanAttach;

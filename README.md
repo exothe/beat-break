@@ -28,11 +28,14 @@ checkout instead of fetching one:
 cmake -B build -DJUCE_PATH=/path/to/JUCE -DCMAKE_BUILD_TYPE=Release
 ```
 
-### Offline DSP checks
+### Offline checks
 
 ```sh
 cmake --build build --target BeatBreakTests
 ./build/BeatBreakTests_artefacts/Release/BeatBreakTests
+
+cmake --build build --target BeatBreakStateTests
+./build/BeatBreakStateTests_artefacts/Release/BeatBreakStateTests
 ```
 
 The tests render a position-encoding ramp through the engine and verify where
@@ -40,7 +43,13 @@ the read pointer actually landed: unity mapping is a sample-accurate
 pass-through, a flat curve holds one position, a half-speed curve advances at
 0.5×, `Stutter 1/8` re-reads the first eighth exactly, `Reverse 1/8` runs at
 −1.0×, gates open and mute, `amount = 0` is transparent, all 36 factory slots
-stay finite and level-sane, and jumps are crossfaded rather than spliced.
+stay finite and level-sane, jumps are crossfaded rather than spliced, and the
+volume envelope's attack, release and tension behave (a 50 ms release takes
+50 ms whatever the tension, which only bends the shape of the move).
+
+`BeatBreakStateTests` covers the other half: a preset written and read back
+keeps its parameters, curve edits and renamed slots, and host state carries the
+same things.
 
 ## How the mapping works
 
@@ -84,9 +93,14 @@ hard splices do not click.
 | **ATT / REL** | Time a full-scale rise / fall of the volume envelope takes, 0–500 ms |
 | **TENSION** | Bends that move: +1 jumps away and lands slowly, -1 creeps out and snaps home, 0 linear |
 | **Mix** | Dry/wet |
+| **Save / Load** | Write or read a `.bbpreset` file — parameters, all 72 curves and slot names. Default folder is `~/Documents/BeatBreak Presets` |
 | **TIME / VOLUME** | Enable each curve independently |
 | **Slots 1–36** | Per-curve pattern slots, automatable so a host can switch patterns |
 | **Reset / Reverse / Factory** | Clear the slot, mirror it in time, or restore the factory pattern |
+
+Right-click a slot button to rename it, or to put its factory name back. Slot
+names show in the button tooltip and above the grid, and are saved with the
+session and with presets.
 
 All knobs, both slot selectors and both enables are host-automatable
 parameters. Curves themselves are saved with the session (all 72 slots).

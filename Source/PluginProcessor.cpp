@@ -214,6 +214,54 @@ void BeatBreakProcessor::resetSlotToFactory (bool timeCurve, int slot)
     curvesDirty.store (true, std::memory_order_release);
 }
 
+juce::String BeatBreakProcessor::getSlotName (bool timeCurve, int slot) const
+{
+    slot = wrapSlot (slot);
+    const auto& custom = timeCurve ? timeSlotNames[(size_t) slot] : volumeSlotNames[(size_t) slot];
+
+    if (custom.isNotEmpty())
+        return custom;
+
+    return timeCurve ? FactoryPatterns::getTimeName (slot) : FactoryPatterns::getVolumeName (slot);
+}
+
+void BeatBreakProcessor::setSlotName (bool timeCurve, int slot, const juce::String& name)
+{
+    slot = wrapSlot (slot);
+
+    const juce::SpinLock::ScopedLockType lock (curveLock);
+    (timeCurve ? timeSlotNames : volumeSlotNames)[(size_t) slot] = name.trim();
+}
+
+//==============================================================================
+
+juce::File BeatBreakProcessor::getPresetDirectory()
+{
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+               .getChildFile ("BeatBreak Presets");
+}
+
+bool BeatBreakProcessor::savePreset (const juce::File& file)
+{
+    auto xml = captureState().createXml();
+
+    if (xml == nullptr)
+        return false;
+
+    file.getParentDirectory().createDirectory();
+    return xml->writeTo (file);
+}
+
+bool BeatBreakProcessor::loadPreset (const juce::File& file)
+{
+    auto xml = juce::XmlDocument::parse (file);
+
+    if (xml == nullptr)
+        return false;
+
+    return applyState (juce::ValueTree::fromXml (*xml));
+}
+
 //==============================================================================
 
 void BeatBreakProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -309,11 +357,11 @@ void BeatBreakProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
 //==============================================================================
 
-void BeatBreakProcessor::getStateInformation (juce::MemoryBlock& destData)
+juce::ValueTree BeatBreakProcessor::captureState()
 {
     auto state = apvts.copyState();
 
-    // Curves live alongside the parameters as plain text attributes.
+    // Curves and slot names live alongside the parameters as plain text.
     state.removeChild (state.getChildWithName ("curves"), nullptr);
     juce::ValueTree curves ("curves");
 
@@ -324,24 +372,23 @@ void BeatBreakProcessor::getStateInformation (juce::MemoryBlock& destData)
         {
             curves.setProperty ("t" + juce::String (i), timeCurves[(size_t) i].toString(), nullptr);
             curves.setProperty ("v" + juce::String (i), volumeCurves[(size_t) i].toString(), nullptr);
+
+            if (timeSlotNames[(size_t) i].isNotEmpty())
+                curves.setProperty ("tn" + juce::String (i), timeSlotNames[(size_t) i], nullptr);
+
+            if (volumeSlotNames[(size_t) i].isNotEmpty())
+                curves.setProperty ("vn" + juce::String (i), volumeSlotNames[(size_t) i], nullptr);
         }
     }
 
     state.appendChild (curves, nullptr);
-
-    if (auto xml = state.createXml())
-        copyXmlToBinary (*xml, destData);
+    return state;
 }
 
-void BeatBreakProcessor::setStateInformation (const void* data, int sizeInBytes)
+bool BeatBreakProcessor::applyState (const juce::ValueTree& state)
 {
-    auto xml = getXmlFromBinary (data, sizeInBytes);
-    if (xml == nullptr)
-        return;
-
-    auto state = juce::ValueTree::fromXml (*xml);
     if (! state.isValid() || state.getType() != apvts.state.getType())
-        return;
+        return false;
 
     auto curves = state.getChildWithName ("curves");
 
@@ -359,6 +406,9 @@ void BeatBreakProcessor::setStateInformation (const void* data, int sizeInBytes)
 
             if (volText.isNotEmpty())
                 volumeCurves[(size_t) i] = EnvelopeCurve::fromString (volText);
+
+            timeSlotNames[(size_t) i]   = curves.getProperty ("tn" + juce::String (i)).toString();
+            volumeSlotNames[(size_t) i] = curves.getProperty ("vn" + juce::String (i)).toString();
         }
     }
 
@@ -367,6 +417,20 @@ void BeatBreakProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     if (auto* editor = dynamic_cast<juce::AudioProcessorEditor*> (getActiveEditor()))
         editor->repaint();
+
+    return true;
+}
+
+void BeatBreakProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    if (auto xml = captureState().createXml())
+        copyXmlToBinary (*xml, destData);
+}
+
+void BeatBreakProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        applyState (juce::ValueTree::fromXml (*xml));
 }
 
 //==============================================================================

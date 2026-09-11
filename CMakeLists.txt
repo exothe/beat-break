@@ -86,3 +86,11 @@ target_link_libraries(BeatBreakTests PRIVATE
     PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
+# State / preset checks: they need the whole plugin, so this target links the
+# shared code rather than a handful of sources.
+# ---------------------------------------------------------------------------
+juce_add_console_app(BeatBreakStateTests PRODUCT_NAME "BeatBreakStateTests")
+target_sources(BeatBreakStateTests PRIVATE Tests/StateTests.cpp)
+target_link_libraries(BeatBreakStateTests PRIVATE BeatBreak juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)

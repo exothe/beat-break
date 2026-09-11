@@ -19,6 +19,8 @@ platform; nothing is macOS-only except the `auval` step.
 /opt/homebrew/bin/cmake --build build -j8                        # all three plugin formats
 /opt/homebrew/bin/cmake --build build -j8 --target BeatBreakTests
 ./build/BeatBreakTests_artefacts/Release/BeatBreakTests          # exit 0 = all checks passed
+/opt/homebrew/bin/cmake --build build -j8 --target BeatBreakStateTests
+./build/BeatBreakStateTests_artefacts/Release/BeatBreakStateTests
 auval -v aufx Bbt1 Bbrk                                          # validate the AU (macOS)
 ```
 
@@ -31,9 +33,14 @@ The standalone build is the fastest way to smoke-test the GUI:
 
 ### Tests
 
-`Tests/EngineTests.cpp` is one console app, not a test framework: `main()` runs
-numbered blocks in sequence and each calls `check(condition, description)`.
-There is **no filter flag** — to run one check, comment out the other blocks.
+Two console apps, not a test framework: `main()` runs numbered blocks in
+sequence and each calls `check(condition, description)`. There is **no filter
+flag** — to run one check, comment out the other blocks.
+
+`Tests/EngineTests.cpp` (DSP) builds from a few sources and is fast.
+`Tests/StateTests.cpp` covers preset files, host state and slot names, so it
+constructs a real `BeatBreakProcessor` and links the whole plugin's shared-code
+target — slower to build, and the one that catches a broken state format.
 
 The technique is worth preserving: the input signal is a ramp encoding absolute
 sample position (`positionSignal`), so an output sample value decoded by
@@ -114,8 +121,14 @@ Parameter IDs (`ParamID` in `PluginProcessor.cpp`): `mix`, `timeAmount`,
 so hosts can automate pattern switching, which is how Gross Beat is played.
 
 State is the APVTS tree plus a `curves` child holding all 72 curves as text
-attributes `t0…t35` / `v0…v35`. Changing `EnvelopeCurve::toString`'s format
-breaks saved sessions.
+attributes `t0…t35` / `v0…v35`, plus `tn*` / `vn*` for renamed slots (absent
+attribute = factory name). Changing `EnvelopeCurve::toString`'s format breaks
+saved sessions.
+
+`captureState()` / `applyState()` build and consume that tree; host state
+(`get`/`setStateInformation`) and preset files (`savePreset` / `loadPreset`,
+`.bbpreset` XML under `~/Documents/BeatBreak Presets`) are both thin wrappers
+around them, so anything added to the tree is saved in both places at once.
 
 ### Volume envelope
 

@@ -53,6 +53,21 @@ public:
     void publishActiveCurves();
     void resetSlotToFactory (bool timeCurve, int slot);
 
+    /** Slot names. A slot keeps its factory name until it is renamed; an empty
+        name puts the factory one back. */
+    juce::String getSlotName (bool timeCurve, int slot) const;
+    void setSlotName (bool timeCurve, int slot, const juce::String& name);
+
+    //==============================================================================
+    // Presets: the whole plugin state (parameters, all 72 curves, slot names)
+    // as one XML file.
+
+    static juce::String getPresetExtension()  { return ".bbpreset"; }
+    static juce::File getPresetDirectory();
+
+    bool savePreset (const juce::File& file);
+    bool loadPreset (const juce::File& file);
+
     /** Take this while mutating a curve from the message thread. */
     juce::SpinLock& getCurveLock() noexcept { return curveLock; }
 
@@ -82,8 +97,18 @@ private:
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void parameterChanged (const juce::String& id, float newValue) override;
 
+    /** The full state - parameters plus the `curves` child - as one tree.
+        Used by both host state and preset files. */
+    juce::ValueTree captureState();
+    bool applyState (const juce::ValueTree& state);
+
     std::array<EnvelopeCurve, (size_t) numSlots> timeCurves;
     std::array<EnvelopeCurve, (size_t) numSlots> volumeCurves;
+
+    // Empty means "use the factory name". Message thread only, but written
+    // under curveLock so state capture sees a consistent set.
+    std::array<juce::String, (size_t) numSlots> timeSlotNames;
+    std::array<juce::String, (size_t) numSlots> volumeSlotNames;
 
     PublishedCurve liveTimeCurve, liveVolumeCurve;
     std::atomic<int> publishedTimeSlot { -1 }, publishedVolumeSlot { -1 };
