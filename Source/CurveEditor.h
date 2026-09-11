@@ -50,7 +50,12 @@ private:
     float snapY (float y, bool fine) const;
     int findPointNear (juce::Point<float> pos, float radiusPx) const;
     int findSegmentNear (juce::Point<float> pos) const;
-    void showPointMenu (int index);
+
+    /** Smooth segments carry a tension handle halfway along them. */
+    bool hasTensionHandle (int segment) const;
+    juce::Point<float> tensionHandlePosition (int segment) const;
+    int findTensionHandleNear (juce::Point<float> pos, float radiusPx) const;
+    void showPointMenu (int index, juce::Point<int> screenPosition);
     void commit();
     juce::Rectangle<float> plotBounds() const;
 
@@ -65,6 +70,7 @@ private:
     float tensionStartY = 0.0f;
     float tensionStartValue = 0.0f;
     int hoverPoint = -1;
+    int hoverHandle = -1;
 
     float lastPhase = 0.0f;
 

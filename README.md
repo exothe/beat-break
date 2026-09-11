@@ -98,20 +98,27 @@ hard splices do not click.
 | **Slots 1–36** | Per-curve pattern slots, automatable so a host can switch patterns |
 | **Reset / Reverse / Factory** | Clear the slot, mirror it in time, or restore the factory pattern |
 
-Right-click a slot button to rename it, or to put its factory name back. Slot
-names show in the button tooltip and above the grid, and are saved with the
-session and with presets.
+Each slot button shows its name, cut off with an ellipsis when it does not fit;
+the tooltip has the slot number and the full name. Right-click a slot to rename
+it, or to put its factory name back. Names are saved with the session and with
+presets.
 
 All knobs, both slot selectors and both enables are host-automatable
 parameters. Curves themselves are saved with the session (all 72 slots).
 
 ## Editing curves
 
-- **double-click** empty grid: add a point; **double-click** a point: delete it
-- **drag** a point: move it (snapped; hold **Shift** for fine)
+- **right-click** the grid: add a point there and drag it straight away. Each x
+  column holds one point only, so right-clicking a column that already has one
+  moves that point instead of stacking a second one on it
+- **double-click** a point: delete it
+- **drag** a point: move it (snapped; hold **Shift** for fine). Points stop
+  short of their neighbours rather than crossing them
 - **drag a segment's body** vertically, or **mouse wheel** over it: bend it
+- a **Smooth** point puts a diamond handle halfway along its segment: drag it to
+  set the tension, right-click it to reset the tension to zero
 - **right-click** a point: segment shape — Linear/Curve, Step (hold), Smooth
-  (S-curve) — reset tension, or delete
+  (S-curve) — or delete the point
 
 The white playhead line and dot show the live loop position and what the curve
 is currently doing.

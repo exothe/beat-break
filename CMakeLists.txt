@@ -52,8 +52,7 @@ target_sources(BeatBreak PRIVATE
 target_compile_definitions(BeatBreak PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_link_libraries(BeatBreak PRIVATE
     juce::juce_audio_utils
@@ -93,4 +92,10 @@ target_link_libraries(BeatBreakTests PRIVATE
 # ---------------------------------------------------------------------------
 juce_add_console_app(BeatBreakStateTests PRODUCT_NAME "BeatBreakStateTests")
 target_sources(BeatBreakStateTests PRIVATE Tests/StateTests.cpp)
+# The console app and the plugin's shared code disagree about
+# JUCE_STANDALONE_APPLICATION; the plugin's value is the one that matters here.
+target_compile_options(BeatBreakStateTests PRIVATE -Wno-macro-redefined)
+
 target_link_libraries(BeatBreakStateTests PRIVATE BeatBreak juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
+
+

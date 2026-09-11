@@ -32,6 +32,11 @@ public:
         Shape shape = Shape::curve;
     };
 
+    /** How close in x two points may get when edited by hand - editing keeps
+        one point per x column. Factory patterns come in through setPoints and
+        are trusted as they are. */
+    static constexpr float minSpacing = 5.0e-4f;
+
     EnvelopeCurve() { setToRamp(); }
 
     //==============================================================================
@@ -128,9 +133,33 @@ public:
     //==============================================================================
     // Editing helpers (message thread only)
 
+    /** Index of the point sitting within `tolerance` of this x, or -1. */
+    int findPointAtX (float x, float tolerance) const noexcept
+    {
+        auto best = -1;
+        auto bestDistance = tolerance;
+
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            const auto d = std::abs (points[i].x - x);
+
+            if (d <= bestDistance)
+            {
+                bestDistance = d;
+                best = (int) i;
+            }
+        }
+
+        return best;
+    }
+
+    /** Adds a point, or returns the existing one if this x is already taken. */
     int addPoint (float x, float y)
     {
         Point p { juce::jlimit (0.0f, 1.0f, x), juce::jlimit (0.0f, 1.0f, y), 0.0f, Shape::curve };
+
+        if (const auto existing = findPointAtX (p.x, minSpacing); existing >= 0)
+            return existing;
 
         // Inherit the shape of the segment we are splitting.
         for (size_t i = 0; i + 1 < points.size(); ++i)
@@ -158,37 +187,34 @@ public:
         sortAndClamp();
     }
 
-    /** Moves a point; end points stay pinned to x = 0 / x = 1. */
+    /** Moves a point; end points stay pinned to x = 0 / x = 1, and a point
+        never crosses or lands on its neighbours, so x stays unique and the
+        index the caller is dragging stays valid. */
     int movePoint (int index, float x, float y)
     {
         if (! juce::isPositiveAndBelow (index, (int) points.size()))
             return index;
 
-        auto moved = points[(size_t) index];
+        auto& moved = points[(size_t) index];
         const auto isFirst = (index == 0);
         const auto isLast  = (index == (int) points.size() - 1);
 
         moved.y = juce::jlimit (0.0f, 1.0f, y);
+
         if (! isFirst && ! isLast)
-            moved.x = juce::jlimit (0.0f, 1.0f, x);
-
-        points[(size_t) index] = moved;
-
-        // Shuffle the moved point back into x order, tracking where it lands
-        // so the caller can keep dragging it.
-        auto i = index;
-        while (i > 0 && points[(size_t) (i - 1)].x > points[(size_t) i].x)
         {
-            std::swap (points[(size_t) (i - 1)], points[(size_t) i]);
-            --i;
-        }
-        while (i + 1 < (int) points.size() && points[(size_t) (i + 1)].x < points[(size_t) i].x)
-        {
-            std::swap (points[(size_t) (i + 1)], points[(size_t) i]);
-            ++i;
+            const auto before = points[(size_t) (index - 1)].x;
+            const auto after  = points[(size_t) (index + 1)].x;
+            const auto lower = before + minSpacing;
+            const auto upper = after - minSpacing;
+
+            // Neighbours can already be tighter than the spacing (factory
+            // slices are), in which case there is only one place to sit.
+            moved.x = lower <= upper ? juce::jlimit (lower, upper, juce::jlimit (0.0f, 1.0f, x))
+                                     : (before + after) * 0.5f;
         }
 
-        return i;
+        return index;
     }
 
     void setTension (int index, float tension)

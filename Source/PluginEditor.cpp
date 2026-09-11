@@ -39,12 +39,58 @@ void LabelledKnob::paint (juce::Graphics& g)
 
 //==============================================================================
 
+namespace
+{
+    /** Trims text to fit, ending in an ellipsis. The buttons are far narrower
+        than the pattern names, so drawFittedText would squash them instead. */
+    juce::String elideToWidth (const juce::String& text, const juce::Font& font, float maxWidth)
+    {
+        if (text.isEmpty() || juce::GlyphArrangement::getStringWidth (font, text) <= maxWidth)
+            return text;
+
+        const auto dots = juce::String (juce::CharPointer_UTF8 ("\xe2\x80\xa6"));
+        const auto room = maxWidth - juce::GlyphArrangement::getStringWidth (font, dots);
+
+        if (room <= 0.0f)
+            return {};
+
+        auto fitting = text;
+
+        while (fitting.isNotEmpty()
+               && juce::GlyphArrangement::getStringWidth (font, fitting) > room)
+            fitting = fitting.dropLastCharacters (1);
+
+        return fitting.trimEnd() + dots;
+    }
+}
+
+void SlotButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    auto& lf = getLookAndFeel();
+
+    lf.drawButtonBackground (g, *this,
+                             findColour (getToggleState() ? juce::TextButton::buttonOnColourId
+                                                          : juce::TextButton::buttonColourId),
+                             highlighted, down);
+
+    const auto area = getLocalBounds().reduced (3, 1);
+    const juce::Font font (juce::FontOptions (juce::jlimit (8.5f, 13.0f, (float) getHeight() * 0.62f)));
+
+    g.setFont (font);
+    g.setColour (findColour (getToggleState() ? juce::TextButton::textColourOnId
+                                              : juce::TextButton::textColourOffId));
+    g.drawText (elideToWidth (getButtonText(), font, (float) area.getWidth()),
+                area, juce::Justification::centred, false);
+}
+
+//==============================================================================
+
 SlotGrid::SlotGrid (int numSlots, std::function<juce::String (int)> nameSource)
     : nameForSlot (std::move (nameSource))
 {
     for (int i = 0; i < numSlots; ++i)
     {
-        auto* b = buttons.add (new SlotButton (juce::String (i + 1)));
+        auto* b = buttons.add (new SlotButton());
         b->setConnectedEdges (juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight
                               | juce::Button::ConnectedOnTop | juce::Button::ConnectedOnBottom);
         b->onClick = [this, i]
@@ -72,8 +118,15 @@ void SlotGrid::refreshNames()
     {
         const auto name = nameForSlot (i);
 
-        if (buttons[i]->getTooltip() != name)
-            buttons[i]->setTooltip (name);
+        if (buttons[i]->getButtonText() != name)
+            buttons[i]->setButtonText (name);
+
+        // The tooltip carries the slot number and the name in full, since the
+        // button itself only has room for a few characters of it.
+        const auto tooltip = juce::String (i + 1) + "  -  " + name;
+
+        if (buttons[i]->getTooltip() != tooltip)
+            buttons[i]->setTooltip (tooltip);
     }
 }
 
@@ -124,8 +177,6 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
       timeEnableAttach (p.apvts, "timeEnable", timeEnable),
       volEnableAttach (p.apvts, "volEnable", volEnable),
       syncAttach (p.apvts, "sync", syncButton),
-      loopAttach (p.apvts, "loopLength", loopLengthBox),
-      spanAttach (p.apvts, "span", spanBox),
       tempoAttach (p.apvts, "freeTempo", freeTempoSlider)
 {
     setSize (1000, 700);
@@ -137,8 +188,10 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
     addAndMakeVisible (titleLabel);
 
-    hintLabel.setText ("double-click: add / remove point   drag segment or wheel: bend   "
-                       "right-click point: step / smooth   right-click slot: rename   shift: no snap",
+    hintLabel.setText ("drag point: move   drag segment, handle or wheel: bend   "
+                       "right-click: add / move point   right-click point: step / smooth   "
+                       "double-click point: remove   right-click handle: reset bend   "
+                       "right-click slot: rename   shift: no snap",
                        juce::dontSendNotification);
     hintLabel.setFont (juce::FontOptions (11.0f));
     hintLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.4f));
@@ -156,6 +209,10 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     spanBox.addItemList (BeatBreakProcessor::getSpanChoices(), 1);
     addAndMakeVisible (loopLengthBox);
     addAndMakeVisible (spanBox);
+
+    using ComboAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    loopAttach = std::make_unique<ComboAttachment> (p.apvts, "loopLength", loopLengthBox);
+    spanAttach = std::make_unique<ComboAttachment> (p.apvts, "span", spanBox);
 
     gridBox.addItemList ({ "1/4", "1/8", "1/12", "1/16", "1/24", "1/32" }, 1);
     gridBox.setSelectedId (4, juce::dontSendNotification);   // 1/16
@@ -451,16 +508,17 @@ void BeatBreakEditor::resized()
         slots.setBounds (section.removeFromTop (52));
         section.removeFromTop (8);
 
-        // Two knob columns once a section carries more than a pair, otherwise
-        // the stack runs past the bottom of the panel.
-        const auto knobColumns = knobs.size() > 2 ? 2 : 1;
+        // Two knob columns: one tall column would push the knobs down to the
+        // size of a dot, and it leaves the buttons a row wide enough to read.
+        const auto knobColumns = knobs.size() > 1 ? 2 : 1;
         auto side = section.removeFromRight (96 * knobColumns);
 
+        // One row of buttons at the bottom, whatever the section: stacking
+        // them eats the height the knobs need to stay readable.
         const auto knobRows = ((int) knobs.size() + knobColumns - 1) / knobColumns;
         const auto buttonHeight = 24;
-        const auto buttonRows = knobColumns > 1 ? 1 : (int) buttons.size();
-        const auto rowHeight = juce::jlimit (52, 78,
-                                             (side.getHeight() - buttonRows * (buttonHeight + 2))
+        const auto rowHeight = juce::jlimit (56, 92,
+                                             (side.getHeight() - buttonHeight - 4)
                                                  / juce::jmax (1, knobRows) - 6);
 
         for (size_t i = 0; i < knobs.size(); i += (size_t) knobColumns)
@@ -478,24 +536,11 @@ void BeatBreakEditor::resized()
             side.removeFromTop (6);
         }
 
-        if (knobColumns > 1)
-        {
-            // One wide column of buttons would waste the height the extra knob
-            // rows need, so lay them across instead.
-            auto row = side.removeFromTop (buttonHeight);
+        auto buttonRow = side.removeFromTop (buttonHeight);
 
-            for (size_t i = 0; i < buttons.size(); ++i)
-                buttons[i]->setBounds (row.removeFromLeft (row.getWidth() / (int) (buttons.size() - i))
-                                           .reduced (2, 1));
-        }
-        else
-        {
-            for (auto* b : buttons)
-            {
-                b->setBounds (side.removeFromTop (buttonHeight).reduced (4, 2));
-                side.removeFromTop (2);
-            }
-        }
+        for (size_t i = 0; i < buttons.size(); ++i)
+            buttons[i]->setBounds (buttonRow.removeFromLeft (buttonRow.getWidth() / (int) (buttons.size() - i))
+                                       .reduced (2, 1));
 
         editor.setBounds (section.withTrimmedRight (8));
     };

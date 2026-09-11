@@ -95,7 +95,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout BeatBreakProcessor::createLa
                                                        NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
                                                        AudioParameterFloatAttributes()
                                                            .withStringFromValueFunction ([] (float v, int)
-                                                                                         { return String (v, 2); })));
+                                                                                         {
+                                                                                             // Otherwise a hair below zero prints as "-0.00".
+                                                                                             return String (std::abs (v) < 0.005f ? 0.0f : v, 2);
+                                                                                         })));
 
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamID::smoothing, 1 }, "Smoothing",
                                                        NormalisableRange<float> (0.0f, 200.0f, 0.1f, 0.4f), 0.0f,

@@ -13,6 +13,7 @@ namespace
 
     constexpr float pointRadius = 4.5f;
     constexpr float grabRadius = 9.0f;
+    constexpr float handleRadius = 3.5f;
 }
 
 CurveEditor::CurveEditor (BeatBreakProcessor& processor, Mode m)
@@ -105,6 +106,50 @@ int CurveEditor::findSegmentNear (juce::Point<float> pos) const
     return -1;
 }
 
+bool CurveEditor::hasTensionHandle (int segment) const
+{
+    const auto& points = curve().getPoints();
+
+    return juce::isPositiveAndBelow (segment, (int) points.size() - 1)
+             && points[(size_t) segment].shape == EnvelopeCurve::Shape::smooth;
+}
+
+juce::Point<float> CurveEditor::tensionHandlePosition (int segment) const
+{
+    const auto& points = curve().getPoints();
+    const auto& a = points[(size_t) segment];
+    const auto& b = points[(size_t) segment + 1];
+
+    // Halfway along the segment, sitting on the curve it draws.
+    const auto x = (a.x + b.x) * 0.5f;
+    const auto y = a.y + (b.y - a.y) * EnvelopeCurve::shape (0.5f, a.tension, a.shape);
+
+    return toScreen (x, y);
+}
+
+int CurveEditor::findTensionHandleNear (juce::Point<float> pos, float radiusPx) const
+{
+    const auto segments = curve().size() - 1;
+    auto best = -1;
+    auto bestDistance = radiusPx;
+
+    for (int i = 0; i < segments; ++i)
+    {
+        if (! hasTensionHandle (i))
+            continue;
+
+        const auto d = tensionHandlePosition (i).getDistanceFrom (pos);
+
+        if (d <= bestDistance)
+        {
+            bestDistance = d;
+            best = i;
+        }
+    }
+
+    return best;
+}
+
 void CurveEditor::commit()
 {
     proc.publishActiveCurves();
@@ -152,18 +197,35 @@ void CurveEditor::paint (juce::Graphics& g)
 
     // ---- the curve ----------------------------------------------------------
     const auto& env = curve();
+    const auto& points = env.getPoints();
     juce::Path path;
-    const auto steps = juce::jmax (2, (int) r.getWidth());
 
-    for (int i = 0; i <= steps; ++i)
+    // Sampled per segment rather than per screen column: a point whose x falls
+    // between two columns would otherwise be cut off by the polyline, which is
+    // very visible once the tension gets steep.
+    path.startNewSubPath (toScreen (points.front().x, points.front().y));
+
+    for (size_t i = 0; i + 1 < points.size(); ++i)
     {
-        const auto x = (float) i / (float) steps;
-        const auto p = toScreen (x, env.getValue (x));
+        const auto& a = points[i];
+        const auto& b = points[i + 1];
 
-        if (i == 0)
-            path.startNewSubPath (p);
-        else
-            path.lineTo (p);
+        if (a.shape == EnvelopeCurve::Shape::step)
+        {
+            path.lineTo (toScreen (b.x, a.y));
+            path.lineTo (toScreen (b.x, b.y));
+            continue;
+        }
+
+        const auto widthPx = toScreen (b.x, 0.0f).x - toScreen (a.x, 0.0f).x;
+        const auto steps = juce::jlimit (2, 512, (int) std::ceil (widthPx));
+
+        for (int s = 1; s <= steps; ++s)
+        {
+            const auto u = (float) s / (float) steps;
+            path.lineTo (toScreen (a.x + (b.x - a.x) * u,
+                                   a.y + (b.y - a.y) * EnvelopeCurve::shape (u, a.tension, a.shape)));
+        }
     }
 
     const auto curveColour = mode == Mode::time ? timeCurveColour : volCurveColour;
@@ -182,7 +244,6 @@ void CurveEditor::paint (juce::Graphics& g)
     g.strokePath (path, juce::PathStrokeType (2.0f));
 
     // ---- points -------------------------------------------------------------
-    const auto& points = env.getPoints();
     for (size_t i = 0; i < points.size(); ++i)
     {
         const auto p = toScreen (points[i].x, points[i].y);
@@ -201,6 +262,27 @@ void CurveEditor::paint (juce::Graphics& g)
             g.setColour (bgColour);
             g.fillEllipse (juce::Rectangle<float> (radius, radius).withCentre (p));
         }
+    }
+
+    // ---- tension handles on smooth segments ---------------------------------
+    for (int i = 0; i + 1 < (int) points.size(); ++i)
+    {
+        if (! hasTensionHandle (i))
+            continue;
+
+        const auto p = tensionHandlePosition (i);
+        const auto active = i == tensionSegment || i == hoverHandle;
+        const auto radius = active ? handleRadius + 1.5f : handleRadius;
+
+        // A diamond, so it does not read as another point.
+        juce::Path diamond;
+        diamond.addQuadrilateral (p.x, p.y - radius, p.x + radius, p.y,
+                                  p.x, p.y + radius, p.x - radius, p.y);
+
+        g.setColour (bgColour);
+        g.fillPath (diamond);
+        g.setColour (active ? juce::Colours::white : curveColour.withAlpha (0.9f));
+        g.strokePath (diamond, juce::PathStrokeType (1.6f));
     }
 
     // ---- playhead -----------------------------------------------------------
@@ -222,10 +304,12 @@ void CurveEditor::paint (juce::Graphics& g)
 void CurveEditor::mouseMove (const juce::MouseEvent& e)
 {
     const auto newHover = findPointNear (e.position, grabRadius);
+    const auto newHandle = newHover >= 0 ? -1 : findTensionHandleNear (e.position, grabRadius);
 
-    if (newHover != hoverPoint)
+    if (newHover != hoverPoint || newHandle != hoverHandle)
     {
         hoverPoint = newHover;
+        hoverHandle = newHandle;
         repaint();
     }
 }
@@ -234,11 +318,48 @@ void CurveEditor::mouseDown (const juce::MouseEvent& e)
 {
     const auto index = findPointNear (e.position, grabRadius);
 
+    const auto handle = index >= 0 ? -1 : findTensionHandleNear (e.position, grabRadius);
+
     if (e.mods.isPopupMenu())
     {
+        // On a point: its menu. On a tension handle: reset that tension.
+        // Anywhere else: add a point there, or grab the one that already owns
+        // that x column - never stack two in one column.
         if (index >= 0)
-            showPointMenu (index);
+        {
+            showPointMenu (index, e.getScreenPosition());
+            return;
+        }
 
+        if (handle >= 0)
+        {
+            {
+                const juce::SpinLock::ScopedLockType lock (proc.getCurveLock());
+                curve().setTension (handle, 0.0f);
+            }
+
+            commit();
+            return;
+        }
+
+        const auto norm = fromScreen (e.position);
+        const auto fine = e.mods.isShiftDown();
+        const auto x = snapX (norm.x, fine);
+        const auto y = snapY (norm.y, fine);
+        const auto tolerance = juce::jmax (EnvelopeCurve::minSpacing,
+                                           grabRadius / juce::jmax (1.0f, plotBounds().getWidth()));
+
+        {
+            const juce::SpinLock::ScopedLockType lock (proc.getCurveLock());
+            const auto existing = curve().findPointAtX (x, tolerance);
+
+            draggedPoint = existing >= 0 ? curve().movePoint (existing, x, y)
+                                         : curve().addPoint (x, y);
+        }
+
+        tensionSegment = -1;
+        hoverPoint = draggedPoint;
+        commit();
         return;
     }
 
@@ -249,8 +370,9 @@ void CurveEditor::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    // Dragging the body of a segment bends it.
-    const auto segment = findSegmentNear (e.position);
+    // The handle bends its own segment; so does dragging the segment body.
+    const auto segment = handle >= 0 ? handle : findSegmentNear (e.position);
+
     if (segment >= 0)
     {
         draggedPoint = -1;
@@ -294,22 +416,21 @@ void CurveEditor::mouseUp (const juce::MouseEvent&)
 {
     draggedPoint = -1;
     tensionSegment = -1;
+    hoverHandle = -1;
     repaint();
 }
 
 void CurveEditor::mouseDoubleClick (const juce::MouseEvent& e)
 {
+    // Adding moved to the right button, so this only removes.
     const auto index = findPointNear (e.position, grabRadius);
-    const auto norm = fromScreen (e.position);
-    const auto fine = e.mods.isShiftDown();
+
+    if (index < 0)
+        return;
 
     {
         const juce::SpinLock::ScopedLockType lock (proc.getCurveLock());
-
-        if (index >= 0)
-            curve().removePoint (index);
-        else
-            curve().addPoint (snapX (norm.x, fine), snapY (norm.y, fine));
+        curve().removePoint (index);
     }
 
     hoverPoint = -1;
@@ -331,7 +452,7 @@ void CurveEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWh
     commit();
 }
 
-void CurveEditor::showPointMenu (int index)
+void CurveEditor::showPointMenu (int index, juce::Point<int> screenPosition)
 {
     juce::PopupMenu menu;
     const auto shape = curve().getPoints()[(size_t) index].shape;
@@ -340,10 +461,12 @@ void CurveEditor::showPointMenu (int index)
     menu.addItem (2, "Step (hold)", true, shape == EnvelopeCurve::Shape::step);
     menu.addItem (3, "Smooth (S-curve)", true, shape == EnvelopeCurve::Shape::smooth);
     menu.addSeparator();
-    menu.addItem (4, "Reset segment tension");
-    menu.addItem (5, "Delete point", curve().size() > 2);
+    menu.addItem (4, "Delete point", curve().size() > 2);
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+    // Target the click, not the component, or the menu lands at the middle
+    // left of the editor.
+    menu.showMenuAsync (juce::PopupMenu::Options()
+                            .withTargetScreenArea ({ screenPosition.x, screenPosition.y, 1, 1 }),
                         [this, index] (int result)
     {
         if (result == 0)
@@ -357,8 +480,7 @@ void CurveEditor::showPointMenu (int index)
                 case 1: curve().setShape (index, EnvelopeCurve::Shape::curve); break;
                 case 2: curve().setShape (index, EnvelopeCurve::Shape::step); break;
                 case 3: curve().setShape (index, EnvelopeCurve::Shape::smooth); break;
-                case 4: curve().setTension (index, 0.0f); break;
-                case 5: curve().removePoint (index); break;
+                case 4: curve().removePoint (index); break;
                 default: break;
             }
         }

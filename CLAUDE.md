@@ -86,6 +86,27 @@ Signal flow per sample, all in `GrossEngine::process`:
   `CurveSnapshot::getValue` are the hot path; the ring buffer is sized once in
   `prepare` (24 s) and never resized.
 
+### Curve editing rules
+
+`EnvelopeCurve::minSpacing` is the one-point-per-x rule: `addPoint` returns the
+existing index instead of stacking a second point on a taken x, and `movePoint`
+clamps between the neighbours rather than reordering, so a drag index stays
+valid for the whole gesture. Factory patterns bypass this through `setPoints` -
+slices sit `edge` (0.0006) apart, which is tighter than `minSpacing`, and
+`movePoint` falls back to the midpoint when neighbours are that close.
+
+In the editor, right-click adds or grabs the point owning that x column,
+double-click on a point removes it, and right-click *on* a point opens the
+shape menu - which must be targeted with `withTargetScreenArea`, since
+`withTargetComponent` puts it at the middle left of the grid. Smooth points get
+a diamond tension handle halfway along their segment (drag = tension,
+right-click = reset); it shares `tensionSegment` with the segment-body drag.
+
+The curve is stroked **per segment**, evaluating `EnvelopeCurve::shape` at
+`u = 0 … 1`, not per screen column. Sampling by column makes the polyline cut
+the corner at any point whose x falls between two columns, which is obvious as
+soon as the tension gets steep.
+
 ### Threading model
 
 Curves are edited on the message thread and read on the audio thread:

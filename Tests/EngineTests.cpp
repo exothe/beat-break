@@ -453,6 +453,47 @@ int main()
                    + juce::String (fallIn * 1000.0, 1) + " ms)");
     }
 
+
+    // ---- 11. curve editing keeps one point per x ---------------------------
+    {
+        EnvelopeCurve c;
+        c.setToRamp();
+
+        const auto first = c.addPoint (0.5f, 0.25f);
+        const auto sizeAfterAdd = c.size();
+        const auto again = c.addPoint (0.5f, 0.75f);
+
+        check (sizeAfterAdd == 3 && again == first && c.size() == 3,
+               "a second point on a taken x returns the existing one (size "
+                   + juce::String (c.size()) + ")");
+
+        check (c.findPointAtX (0.5f, 1.0e-3f) == first, "findPointAtX finds it back");
+        check (c.findPointAtX (0.2f, 1.0e-3f) < 0, "findPointAtX ignores empty columns");
+
+        // Dragging past a neighbour clamps instead of reordering.
+        c.addPoint (0.75f, 0.5f);
+        const auto moved = c.movePoint (first, 0.99f, 0.5f);
+        const auto& points = c.getPoints();
+
+        check (moved == first, "a dragged point keeps its index");
+        check (points[(size_t) moved].x < 0.75f - EnvelopeCurve::minSpacing * 0.5f,
+               "a dragged point stops short of its neighbour (x "
+                   + juce::String (points[(size_t) moved].x, 4) + ")");
+
+        auto ascending = true;
+        for (size_t i = 0; i + 1 < points.size(); ++i)
+            if (points[i + 1].x - points[i].x < EnvelopeCurve::minSpacing * 0.5f)
+                ascending = false;
+
+        check (ascending, "points stay strictly ordered in x");
+
+        // End points stay pinned.
+        c.movePoint (0, 0.4f, 0.3f);
+        c.movePoint (c.size() - 1, 0.6f, 0.3f);
+        check (c.getPoints().front().x <= 0.0f && c.getPoints().back().x >= 1.0f,
+               "end points stay pinned to 0 and 1");
+    }
+
     std::cout << (failures == 0 ? "all checks passed" : juce::String (failures) + " CHECK(S) FAILED")
               << std::endl;
 

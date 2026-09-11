@@ -22,7 +22,8 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
 };
 
-/** A slot button: left click selects, right click asks for the rename menu. */
+/** A slot button: shows the slot's name, elided to fit; left click selects,
+    right click asks for the rename menu. */
 class SlotButton final : public juce::TextButton
 {
 public:
@@ -40,6 +41,8 @@ public:
 
         juce::TextButton::mouseDown (e);
     }
+
+    void paintButton (juce::Graphics& g, bool highlighted, bool down) override;
 };
 
 /** 36 slot buttons, laid out 12 across, Gross Beat style. */
@@ -107,8 +110,11 @@ private:
     juce::TooltipWindow tooltips { this, 450 };
 
     juce::AudioProcessorValueTreeState::ButtonAttachment timeEnableAttach, volEnableAttach, syncAttach;
-    juce::AudioProcessorValueTreeState::ComboBoxAttachment loopAttach, spanAttach;
     juce::AudioProcessorValueTreeState::SliderAttachment tempoAttach;
+
+    // Built in the constructor body: a ComboBoxAttachment can only select an
+    // item that already exists, and the lists are filled there.
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> loopAttach, spanAttach;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BeatBreakEditor)
 };
