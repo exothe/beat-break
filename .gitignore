@@ -1,0 +1,41 @@
+# Build output (also holds the fetched JUCE checkout in build/_deps)
+build/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CMakeUserPresets.json
+compile_commands.json
+.cmake/
+
+# Local JUCE checkout, if one is dropped in the tree instead of fetched
+/JUCE/
+
+# Xcode / Visual Studio / other generators
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.sln
+*.vcxproj*
+.vs/
+*.user
+
+# Editors
+.idea/
+.vscode/
+.cache/
+.clangd/
+
+# macOS
+.DS_Store
+._*
+
+# Rendered audio and crash logs from manual testing
+*.wav
+*.aif
+*.aiff
+*.crash
