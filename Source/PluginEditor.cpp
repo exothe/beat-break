@@ -8,6 +8,11 @@
 
 namespace
 {
+    /** Grid divisions across the whole loop, so a 4 bar loop needs the fine end
+        of this list to land on a sixteenth. */
+    constexpr int gridChoices[] = { 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256 };
+    constexpr int numGridChoices = (int) (sizeof (gridChoices) / sizeof (gridChoices[0]));
+
     const juce::Colour panelColour { 0xff1b1e27 };
     const juce::Colour backColour  { 0xff0f1117 };
     const juce::Colour accentTime  { 0xff4ad0ff };
@@ -218,16 +223,20 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     loopAttach = std::make_unique<ComboAttachment> (p.apvts, "loopLength", loopLengthBox);
     spanAttach = std::make_unique<ComboAttachment> (p.apvts, "span", spanBox);
 
-    gridBox.addItemList ({ "1/4", "1/8", "1/12", "1/16", "1/24", "1/32" }, 1);
-    gridBox.setSelectedId (4, juce::dontSendNotification);   // 1/16
-    gridBox.onChange = [this] { applyGridDivisions(); };
+    for (int i = 0; i < numGridChoices; ++i)
+        gridBox.addItem ("1/" + juce::String (gridChoices[i]), i + 1);
+
+    gridBox.onChange = [this]
+    {
+        proc.setGridDivisions (gridChoices[juce::jlimit (1, numGridChoices, gridBox.getSelectedId()) - 1]);
+        applyGridDivisions();
+    };
     addAndMakeVisible (gridBox);
 
-    snapButton.setToggleState (true, juce::dontSendNotification);
     snapButton.onClick = [this]
     {
-        timeEditor.setSnapEnabled (snapButton.getToggleState());
-        volumeEditor.setSnapEnabled (snapButton.getToggleState());
+        proc.setSnapEnabled (snapButton.getToggleState());
+        applySnap();
     };
     addAndMakeVisible (snapButton);
 
@@ -307,6 +316,7 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     dropKeyboardFocus (*this);
 
     applyGridDivisions();
+    applySnap();
     timerCallback();
     startTimerHz (15);
 }
@@ -318,11 +328,25 @@ BeatBreakEditor::~BeatBreakEditor()
 
 void BeatBreakEditor::applyGridDivisions()
 {
-    static const int divisions[] = { 4, 8, 12, 16, 24, 32 };
-    const auto index = juce::jlimit (1, 6, gridBox.getSelectedId()) - 1;
+    // The stored value is the division count itself, not a list index, so the
+    // choices can grow without changing what an old session means.
+    const auto divisions = proc.getGridDivisions();
 
-    timeEditor.setGridDivisions (divisions[index]);
-    volumeEditor.setGridDivisions (divisions[index]);
+    timeEditor.setGridDivisions (divisions);
+    volumeEditor.setGridDivisions (divisions);
+
+    for (int i = 0; i < numGridChoices; ++i)
+        if (gridChoices[i] == divisions && gridBox.getSelectedId() != i + 1)
+            gridBox.setSelectedId (i + 1, juce::dontSendNotification);
+}
+
+void BeatBreakEditor::applySnap()
+{
+    const auto snapping = proc.isSnapEnabled();
+
+    snapButton.setToggleState (snapping, juce::dontSendNotification);
+    timeEditor.setSnapEnabled (snapping);
+    volumeEditor.setSnapEnabled (snapping);
 }
 
 void BeatBreakEditor::showSlotMenu (bool timeCurve, int slot)
@@ -450,9 +474,15 @@ void BeatBreakEditor::timerCallback()
     timeSlotName.setText (proc.getSlotName (true, t), juce::dontSendNotification);
     volSlotName.setText (proc.getSlotName (false, v), juce::dontSendNotification);
 
-    // Cheap enough at 15 Hz, and it catches renames a preset load brought in.
+    // Cheap enough at 15 Hz, and it catches what a preset load brought in.
     timeSlots.refreshNames();
     volumeSlots.refreshNames();
+
+    if (timeEditor.getGridDivisions() != proc.getGridDivisions())
+        applyGridDivisions();
+
+    if (snapButton.getToggleState() != proc.isSnapEnabled())
+        applySnap();
 
     // With no host tempo (the standalone app) the free tempo is what actually
     // drives the engine, so leave it editable even when Host Sync is on.
@@ -527,7 +557,7 @@ void BeatBreakEditor::resized()
     auto controls = header.withTrimmedTop (10).withTrimmedBottom (6);
     loopLengthBox.setBounds (controls.removeFromLeft (96).reduced (2, 0));
     spanBox.setBounds (controls.removeFromLeft (86).reduced (2, 0));
-    gridBox.setBounds (controls.removeFromLeft (70).reduced (2, 0));
+    gridBox.setBounds (controls.removeFromLeft (84).reduced (2, 0));   // fits "1/256"
     snapButton.setBounds (controls.removeFromLeft (70).reduced (2, 0));
     syncButton.setBounds (controls.removeFromLeft (94).reduced (2, 0));
     freeTempoSlider.setBounds (controls.removeFromLeft (200).reduced (2, 0));

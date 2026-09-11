@@ -71,6 +71,18 @@ public:
     /** Take this while mutating a curve from the message thread. */
     juce::SpinLock& getCurveLock() noexcept { return curveLock; }
 
+    //==============================================================================
+    // Editor settings. Not parameters - nobody automates a grid - but they live
+    // on the APVTS tree, so sessions and presets carry them.
+
+    static constexpr int defaultGridDivisions = 16;
+
+    int getGridDivisions() const;
+    void setGridDivisions (int divisions);
+
+    bool isSnapEnabled() const;
+    void setSnapEnabled (bool shouldSnap);
+
     /** Playhead position inside the pattern loop, 0..1, for the editor. */
     float getLoopPhase() const noexcept  { return engine.getLoopPhase(); }
     float getCurrentGain() const noexcept { return engine.getCurrentGain(); }

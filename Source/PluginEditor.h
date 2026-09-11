@@ -82,6 +82,7 @@ public:
 private:
     void timerCallback() override;
     void applyGridDivisions();
+    void applySnap();
     void showSlotMenu (bool timeCurve, int slot);
     void renameSlot (bool timeCurve, int slot);
     void savePreset();

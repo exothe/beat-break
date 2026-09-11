@@ -84,7 +84,7 @@ hard splices do not click.
 | --- | --- |
 | **Loop Length** | Pattern length: 1/4, 1/2, 1, 2 or 4 bars (follows host time signature) |
 | **Time Span** | How much buffer the time curve's y axis covers: 1, 2 or 4 loops |
-| **Grid** | Snap and grid resolution: 1/4 … 1/32, including triplets |
+| **Grid** | Snap and grid resolution, in divisions of the whole loop: 1/4 … 1/256, including triplets. A 4 bar loop needs 1/128 to land on a sixteenth |
 | **Snap** | Toggle grid snapping (also bypassed while holding Shift) |
 | **Host Sync** | Follow host tempo and playhead; off uses the free tempo slider |
 | **Time Amount** | Morph the time curve toward unity playback |
@@ -104,7 +104,8 @@ it, or to put its factory name back. Names are saved with the session and with
 presets.
 
 All knobs, both slot selectors and both enables are host-automatable
-parameters. Curves themselves are saved with the session (all 72 slots).
+parameters. Curves themselves are saved with the session (all 72 slots), as are
+the slot names and the grid / snap settings.
 
 ## Editing curves
 

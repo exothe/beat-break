@@ -175,19 +175,35 @@ void CurveEditor::paint (juce::Graphics& g)
     const auto divisions = juce::jmax (1, gridDivisions);
     const auto beatsPerLoop = juce::jmax (1, juce::roundToInt (proc.getLoopBeats()));
 
+    // Fine divisions (a 4 bar loop needs 128 of them for a sixteenth) would
+    // otherwise fill the grid in solid, so minor lines drop out once they are
+    // closer than a few pixels; the beat lines always stay.
+    const auto drawMinorColumns = r.getWidth() / (float) divisions >= 4.0f;
+
     for (int i = 0; i <= divisions; ++i)
     {
-        const auto x = r.getX() + r.getWidth() * (float) i / (float) divisions;
         const auto onBeat = (i * beatsPerLoop) % divisions == 0;
+
+        if (! onBeat && ! drawMinorColumns)
+            continue;
+
+        const auto x = r.getX() + r.getWidth() * (float) i / (float) divisions;
         g.setColour (onBeat ? beatColour : gridColour);
         g.drawVerticalLine ((int) std::round (x), r.getY(), r.getBottom());
     }
 
     const auto hLines = mode == Mode::time ? divisions : 8;
+    const auto drawMinorRows = r.getHeight() / (float) hLines >= 4.0f;
+
     for (int i = 0; i <= hLines; ++i)
     {
+        const auto major = i % 4 == 0;
+
+        if (! major && ! drawMinorRows)
+            continue;
+
         const auto y = r.getBottom() - r.getHeight() * (float) i / (float) hLines;
-        g.setColour (i % 4 == 0 ? beatColour : gridColour);
+        g.setColour (major ? beatColour : gridColour);
         g.drawHorizontalLine ((int) std::round (y), r.getX(), r.getRight());
     }
 
@@ -583,7 +599,7 @@ bool CurveEditor::keyPressed (const juce::KeyPress& key, juce::Component*)
 
 void CurveEditor::setGridDivisions (int divisions)
 {
-    gridDivisions = juce::jlimit (1, 64, divisions);
+    gridDivisions = juce::jlimit (1, 256, divisions);
     repaint();
 }
 

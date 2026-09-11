@@ -26,6 +26,8 @@ int main()
 
     {
         BeatBreakProcessor p;
+        p.setGridDivisions (96);
+        p.setSnapEnabled (false);
         p.setSlotName (true, 5, "My Chop");
         p.setSlotName (false, 7, "My Gate");
         p.getTimeCurve (5).setToFlat (0.42f);
@@ -38,10 +40,15 @@ int main()
         BeatBreakProcessor p;
         check (p.getSlotName (true, 5) == FactoryPatterns::getTimeName (5), "fresh instance has factory names ("
                                                              + p.getSlotName (true, 5) + ")");
+        check (p.getGridDivisions() == BeatBreakProcessor::defaultGridDivisions
+                   && p.isSnapEnabled(), "fresh instance defaults to 1/16 with snap on");
         check (p.loadPreset (file), "loadPreset reads the file");
         check (p.getSlotName (true, 5) == "My Chop", "time slot name survives (" + p.getSlotName (true, 5) + ")");
         check (p.getSlotName (false, 7) == "My Gate", "volume slot name survives (" + p.getSlotName (false, 7) + ")");
         check (std::abs (p.getTimeCurve (5).getValue (0.5f) - 0.42f) < 1.0e-3f, "curve edit survives");
+        check (p.getGridDivisions() == 96, "grid resolution survives a preset ("
+                                               + juce::String (p.getGridDivisions()) + ")");
+        check (! p.isSnapEnabled(), "snap setting survives a preset");
         const auto att = p.apvts.getRawParameterValue ("volAttack")->load();
         check (std::abs (att - 123.0f) < 0.5f, "parameter survives (" + juce::String (att) + ")");
 
@@ -55,6 +62,7 @@ int main()
         BeatBreakProcessor q;
         q.setStateInformation (block.getData(), (int) block.getSize());
         check (q.getSlotName (false, 7) == "Host Name", "host state carries names");
+        check (q.getGridDivisions() == 96 && ! q.isSnapEnabled(), "host state carries the grid settings");
     }
 
     check (! juce::File ("/nonexistent/nope.bbpreset").existsAsFile(), "sanity");

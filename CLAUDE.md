@@ -156,6 +156,13 @@ Parameter IDs (`ParamID` in `PluginProcessor.cpp`): `mix`, `timeAmount`,
 `timeEnable`, `volEnable`, `sync`, `freeTempo`. Slots are `AudioParameterChoice`
 so hosts can automate pattern switching, which is how Gross Beat is played.
 
+The grid resolution and the snap toggle are plain properties on `apvts.state`
+(`gridDivisions`, `snap`) rather than parameters - nobody automates a grid, and
+`replaceState` swaps the whole tree, so they ride along with sessions and
+presets for free. The stored value is the division count itself, not an index
+into the editor's list, so that list can grow without changing what an old
+session means.
+
 State is the APVTS tree plus a `curves` child holding all 72 curves as text
 attributes `t0…t35` / `v0…v35`, plus `tn*` / `vn*` for renamed slots (absent
 attribute = factory name). Changing `EnvelopeCurve::toString`'s format breaks

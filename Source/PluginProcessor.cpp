@@ -236,6 +236,33 @@ void BeatBreakProcessor::setSlotName (bool timeCurve, int slot, const juce::Stri
     (timeCurve ? timeSlotNames : volumeSlotNames)[(size_t) slot] = name.trim();
 }
 
+namespace StateID
+{
+    static const juce::Identifier gridDivisions { "gridDivisions" };
+    static const juce::Identifier snap          { "snap" };
+}
+
+int BeatBreakProcessor::getGridDivisions() const
+{
+    const auto stored = (int) apvts.state.getProperty (StateID::gridDivisions, defaultGridDivisions);
+    return juce::jlimit (1, 256, stored);
+}
+
+void BeatBreakProcessor::setGridDivisions (int divisions)
+{
+    apvts.state.setProperty (StateID::gridDivisions, juce::jlimit (1, 256, divisions), nullptr);
+}
+
+bool BeatBreakProcessor::isSnapEnabled() const
+{
+    return (bool) apvts.state.getProperty (StateID::snap, true);
+}
+
+void BeatBreakProcessor::setSnapEnabled (bool shouldSnap)
+{
+    apvts.state.setProperty (StateID::snap, shouldSnap, nullptr);
+}
+
 //==============================================================================
 
 juce::File BeatBreakProcessor::getPresetDirectory()
