@@ -62,7 +62,13 @@ private:
         and escape themselves, so we listen on the menu window. */
     using juce::Component::keyPressed;   // the KeyListener overload hides it
     bool keyPressed (const juce::KeyPress& key, juce::Component* originating) override;
-    void stopListeningToMenu();
+
+    /** Drops the shortcut listener only. Releasing the borrowed focus here as
+        well would dismiss the menu the listener was just attached to. */
+    void detachMenuListener();
+
+    /** Menu is over: drop the listener and hand the keyboard back. */
+    void finishMenu();
 
     /** The editor holds no keyboard focus so the host keeps its transport
         keys, but a menu shortcut needs the key events to arrive at all. */

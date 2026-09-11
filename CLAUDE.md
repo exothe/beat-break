@@ -117,6 +117,13 @@ the menu (`takeKeyboardFocusForMenu`) and hands it back afterwards, including
 `SetFocus` to the host's root window on Windows; JUCE's own
 `giveAwayKeyboardFocus` does not return the OS focus.
 
+Handing it back **only** once the menu has closed: `detachMenuListener()` drops
+the listener, `finishMenu()` also releases the focus, and `showPointMenu` uses
+the former. Release the focus while the menu is up and `checkButtonState` in
+`juce_PopupMenu.cpp` sees no focused JUCE component, having already latched
+`hasAnyJuceCompHadFocus`, and kills the menu ~10 ms after it opened - on Windows
+that looked like the menu flashing and vanishing on a single right-click.
+
 The curve is stroked **per segment**, evaluating `EnvelopeCurve::shape` at
 `u = 0 … 1`, not per screen column. Sampling by column makes the polyline cut
 the corner at any point whose x falls between two columns, which is obvious as

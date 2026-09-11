@@ -31,7 +31,7 @@ CurveEditor::CurveEditor (BeatBreakProcessor& processor, Mode m)
 CurveEditor::~CurveEditor()
 {
     stopTimer();
-    stopListeningToMenu();
+    finishMenu();
     juce::PopupMenu::dismissAllActiveMenus();
 }
 
@@ -507,7 +507,7 @@ void CurveEditor::showPointMenu (int index, juce::Point<int> screenPosition)
         if (safe == nullptr)
             return;
 
-        safe->stopListeningToMenu();
+        safe->finishMenu();
 
         if (result == 0)
             return;
@@ -530,24 +530,31 @@ void CurveEditor::showPointMenu (int index, juce::Point<int> screenPosition)
     });
 
     // showMenuAsync has already put the menu window up, so this is where the
-    // shortcut listener goes.
+    // shortcut listener goes. Note detachMenuListener, not finishMenu: giving
+    // the keyboard back here hands the OS focus to the host, and the menu
+    // dismisses itself the moment no JUCE component holds focus - which looked
+    // like the menu flashing up and vanishing on one click.
     if (auto* modal = juce::ModalComponentManager::getInstance()->getModalComponent (0))
     {
-        stopListeningToMenu();
+        detachMenuListener();
         menuPointIndex = index;
         menuWindow = modal;
         modal->addKeyListener (this);
     }
 }
 
-void CurveEditor::stopListeningToMenu()
+void CurveEditor::detachMenuListener()
 {
     if (menuWindow != nullptr)
         menuWindow->removeKeyListener (this);
 
     menuWindow = nullptr;
     menuPointIndex = -1;
+}
 
+void CurveEditor::finishMenu()
+{
+    detachMenuListener();
     returnKeyboardFocusToHost();
 }
 
@@ -559,7 +566,8 @@ void CurveEditor::takeKeyboardFocusForMenu()
 
 void CurveEditor::returnKeyboardFocusToHost()
 {
-    if (! getWantsKeyboardFocus())
+    // Never while a menu is still up: see detachMenuListener.
+    if (menuWindow != nullptr || ! getWantsKeyboardFocus())
         return;
 
     setWantsKeyboardFocus (false);
@@ -582,7 +590,7 @@ bool CurveEditor::keyPressed (const juce::KeyPress& key, juce::Component*)
 
     const auto index = menuPointIndex;
 
-    stopListeningToMenu();
+    finishMenu();
     juce::PopupMenu::dismissAllActiveMenus();
 
     {
