@@ -118,7 +118,8 @@ parameters. Curves themselves are saved with the session (all 72 slots).
 - a **Smooth** point puts a diamond handle halfway along its segment: drag it to
   set the tension, right-click it to reset the tension to zero
 - **right-click** a point: segment shape — Linear/Curve, Step (hold), Smooth
-  (S-curve) — or delete the point
+  (S-curve) — or delete the point; press **D** while that menu is open to
+  delete the point straight away
 
 The white playhead line and dot show the live loop position and what the curve
 is currently doing.

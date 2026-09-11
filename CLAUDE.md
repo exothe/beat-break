@@ -102,6 +102,21 @@ shape menu - which must be targeted with `withTargetScreenArea`, since
 a diamond tension handle halfway along their segment (drag = tension,
 right-click = reset); it shares `tensionSegment` with the segment-body drag.
 
+The point menu's **D** shortcut is a `KeyListener` attached to the modal menu
+window, grabbed from `ModalComponentManager` right after `showMenuAsync` -
+JUCE's menus only handle the arrows, return and escape themselves, and there is
+no API for item shortcuts. `stopListeningToMenu()` must run on every exit path
+(menu callback, destructor) or the listener outlives the window.
+
+Menu windows are created with `windowIgnoresKeyPresses` and never take focus:
+keys reach them through the peer of whatever *is* focused, which
+`ComponentPeer::getTargetForKeyPress` then redirects to the modal component.
+With nothing in the editor holding focus that peer never sees a key at all - in
+FL the keystroke just goes to FL. So `CurveEditor` borrows focus for the life of
+the menu (`takeKeyboardFocusForMenu`) and hands it back afterwards, including
+`SetFocus` to the host's root window on Windows; JUCE's own
+`giveAwayKeyboardFocus` does not return the OS focus.
+
 The curve is stroked **per segment**, evaluating `EnvelopeCurve::shape` at
 `u = 0 … 1`, not per screen column. Sampling by column makes the polyline cut
 the corner at any point whose x falls between two columns, which is obvious as

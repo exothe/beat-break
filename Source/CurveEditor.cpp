@@ -1,6 +1,10 @@
 #include "CurveEditor.h"
 #include "PluginProcessor.h"
 
+#if JUCE_WINDOWS
+ #include <windows.h>
+#endif
+
 namespace
 {
     const juce::Colour bgColour        { 0xff14161c };
@@ -27,6 +31,8 @@ CurveEditor::CurveEditor (BeatBreakProcessor& processor, Mode m)
 CurveEditor::~CurveEditor()
 {
     stopTimer();
+    stopListeningToMenu();
+    juce::PopupMenu::dismissAllActiveMenus();
 }
 
 //==============================================================================
@@ -461,32 +467,116 @@ void CurveEditor::showPointMenu (int index, juce::Point<int> screenPosition)
     menu.addItem (2, "Step (hold)", true, shape == EnvelopeCurve::Shape::step);
     menu.addItem (3, "Smooth (S-curve)", true, shape == EnvelopeCurve::Shape::smooth);
     menu.addSeparator();
-    menu.addItem (4, "Delete point", curve().size() > 2);
+
+    juce::PopupMenu::Item deleteItem ("Delete point");
+    deleteItem.itemID = 4;
+    deleteItem.setEnabled (curve().size() > 2);
+    deleteItem.shortcutKeyDescription = "D";
+    menu.addItem (deleteItem);
+
+    juce::Component::SafePointer<CurveEditor> safe (this);
+
+    // JUCE menu windows are created with windowIgnoresKeyPresses: key events
+    // reach them through the peer of whatever *does* have focus, redirected to
+    // the modal component. Nothing here holds focus (the host needs it for its
+    // transport keys), so the editor borrows it for as long as the menu is up.
+    takeKeyboardFocusForMenu();
 
     // Target the click, not the component, or the menu lands at the middle
     // left of the editor.
     menu.showMenuAsync (juce::PopupMenu::Options()
                             .withTargetScreenArea ({ screenPosition.x, screenPosition.y, 1, 1 }),
-                        [this, index] (int result)
+                        [safe, index] (int result)
     {
+        if (safe == nullptr)
+            return;
+
+        safe->stopListeningToMenu();
+
         if (result == 0)
             return;
 
         {
-            const juce::SpinLock::ScopedLockType lock (proc.getCurveLock());
+            const juce::SpinLock::ScopedLockType lock (safe->proc.getCurveLock());
 
             switch (result)
             {
-                case 1: curve().setShape (index, EnvelopeCurve::Shape::curve); break;
-                case 2: curve().setShape (index, EnvelopeCurve::Shape::step); break;
-                case 3: curve().setShape (index, EnvelopeCurve::Shape::smooth); break;
-                case 4: curve().removePoint (index); break;
+                case 1: safe->curve().setShape (index, EnvelopeCurve::Shape::curve); break;
+                case 2: safe->curve().setShape (index, EnvelopeCurve::Shape::step); break;
+                case 3: safe->curve().setShape (index, EnvelopeCurve::Shape::smooth); break;
+                case 4: safe->curve().removePoint (index); break;
                 default: break;
             }
         }
 
-        commit();
+        safe->hoverPoint = -1;
+        safe->commit();
     });
+
+    // showMenuAsync has already put the menu window up, so this is where the
+    // shortcut listener goes.
+    if (auto* modal = juce::ModalComponentManager::getInstance()->getModalComponent (0))
+    {
+        stopListeningToMenu();
+        menuPointIndex = index;
+        menuWindow = modal;
+        modal->addKeyListener (this);
+    }
+}
+
+void CurveEditor::stopListeningToMenu()
+{
+    if (menuWindow != nullptr)
+        menuWindow->removeKeyListener (this);
+
+    menuWindow = nullptr;
+    menuPointIndex = -1;
+
+    returnKeyboardFocusToHost();
+}
+
+void CurveEditor::takeKeyboardFocusForMenu()
+{
+    setWantsKeyboardFocus (true);
+    grabKeyboardFocus();
+}
+
+void CurveEditor::returnKeyboardFocusToHost()
+{
+    if (! getWantsKeyboardFocus())
+        return;
+
+    setWantsKeyboardFocus (false);
+    giveAwayKeyboardFocus();
+
+    // Handing JUCE's focus back is not enough on Windows: the host window has
+    // to get the OS focus too, or its keyboard shortcuts stay dead.
+   #if JUCE_WINDOWS
+    if (auto* peer = getPeer())
+        if (auto* handle = (HWND) peer->getNativeHandle())
+            if (auto* root = GetAncestor (handle, GA_ROOT))
+                SetFocus (root);
+   #endif
+}
+
+bool CurveEditor::keyPressed (const juce::KeyPress& key, juce::Component*)
+{
+    if (menuPointIndex < 0 || ! key.isKeyCode ('D'))
+        return false;
+
+    const auto index = menuPointIndex;
+
+    stopListeningToMenu();
+    juce::PopupMenu::dismissAllActiveMenus();
+
+    {
+        const juce::SpinLock::ScopedLockType lock (proc.getCurveLock());
+        curve().removePoint (index);
+    }
+
+    hoverPoint = -1;
+    commit();
+    return true;
 }
 
 //==============================================================================

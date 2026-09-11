@@ -13,7 +13,8 @@ class BeatBreakProcessor;
     (falling), frozen (flat) or pitched (any other slope).
 */
 class CurveEditor final : public juce::Component,
-                          private juce::Timer
+                          private juce::Timer,
+                          private juce::KeyListener
 {
 public:
     enum class Mode { time, volume };
@@ -56,6 +57,17 @@ private:
     juce::Point<float> tensionHandlePosition (int segment) const;
     int findTensionHandleNear (juce::Point<float> pos, float radiusPx) const;
     void showPointMenu (int index, juce::Point<int> screenPosition);
+
+    /** The point menu's D shortcut: JUCE menus only handle the arrows, return
+        and escape themselves, so we listen on the menu window. */
+    using juce::Component::keyPressed;   // the KeyListener overload hides it
+    bool keyPressed (const juce::KeyPress& key, juce::Component* originating) override;
+    void stopListeningToMenu();
+
+    /** The editor holds no keyboard focus so the host keeps its transport
+        keys, but a menu shortcut needs the key events to arrive at all. */
+    void takeKeyboardFocusForMenu();
+    void returnKeyboardFocusToHost();
     void commit();
     juce::Rectangle<float> plotBounds() const;
 
@@ -71,6 +83,9 @@ private:
     float tensionStartValue = 0.0f;
     int hoverPoint = -1;
     int hoverHandle = -1;
+
+    int menuPointIndex = -1;
+    juce::Component::SafePointer<juce::Component> menuWindow;
 
     float lastPhase = 0.0f;
 
