@@ -39,7 +39,9 @@ juce_add_plugin(BeatBreak
     NEEDS_MIDI_INPUT          FALSE
     NEEDS_MIDI_OUTPUT         FALSE
     IS_MIDI_EFFECT            FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    # FALSE so hosts keep the keyboard: FL's spacebar is the transport, and
+    # nothing in this editor needs typing (renaming uses its own window).
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD   TRUE)
 
 target_sources(BeatBreak PRIVATE

@@ -2,6 +2,10 @@
 #include "FactoryPatterns.h"
 #include "PluginProcessor.h"
 
+#if JUCE_WINDOWS
+ #include <windows.h>
+#endif
+
 namespace
 {
     const juce::Colour panelColour { 0xff1b1e27 };
@@ -286,6 +290,22 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     volReverse.onClick   = [this] { volumeEditor.reverseCurve(); };
     volFactory.onClick   = [this] { volumeEditor.resetToFactory(); };
 
+    // Hosts own the keyboard: FL Studio's spacebar starts the transport, but a
+    // JUCE slider or button takes focus when clicked and then eats the key
+    // (Button treats space as a click). Nothing here needs typing - renaming
+    // happens in its own window - so no part of the editor takes focus.
+    const std::function<void (juce::Component&)> dropKeyboardFocus =
+        [&dropKeyboardFocus] (juce::Component& c)
+        {
+            c.setWantsKeyboardFocus (false);
+            c.setMouseClickGrabsKeyboardFocus (false);
+
+            for (auto* child : c.getChildren())
+                dropKeyboardFocus (*child);
+        };
+
+    dropKeyboardFocus (*this);
+
     applyGridDivisions();
     timerCallback();
     startTimerHz (15);
@@ -460,6 +480,32 @@ void BeatBreakEditor::paint (juce::Graphics& g)
     const auto halfHeight = area.getHeight() / 2;
     panel (area.removeFromTop (halfHeight).reduced (0, 4), accentTime);
     panel (area.reduced (0, 4), accentVol);
+}
+
+bool BeatBreakEditor::keyPressed (const juce::KeyPress& key)
+{
+    // Belt and braces for hosts that hand our window the focus anyway: pass
+    // the transport key up to the host's own window instead of eating it.
+   #if JUCE_WINDOWS
+    if (key.getKeyCode() == juce::KeyPress::spaceKey)
+    {
+        if (auto* peer = getPeer())
+        {
+            if (auto* handle = (HWND) peer->getNativeHandle())
+            {
+                if (auto* root = GetAncestor (handle, GA_ROOT))
+                {
+                    PostMessage (root, WM_KEYDOWN, (WPARAM) VK_SPACE, 0);
+                    PostMessage (root, WM_KEYUP, (WPARAM) VK_SPACE, 0);
+                    return true;
+                }
+            }
+        }
+    }
+   #endif
+
+    juce::ignoreUnused (key);
+    return false;
 }
 
 void BeatBreakEditor::resized()

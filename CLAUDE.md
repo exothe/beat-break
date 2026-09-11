@@ -166,6 +166,16 @@ to `[0.002, 64]` — without that the stiff ends of extreme tension either stall
 or overshoot the intended length by more than a few percent, which is exactly
 what `EngineTests` check 10 measures.
 
+### Keyboard focus
+
+Nothing in the editor takes keyboard focus: the constructor walks the whole
+child tree calling `setWantsKeyboardFocus (false)` and
+`setMouseClickGrabsKeyboardFocus (false)`, and `EDITOR_WANTS_KEYBOARD_FOCUS` is
+`FALSE`. A focused JUCE `Button` treats space as a click, which steals FL
+Studio's transport key. `BeatBreakEditor::keyPressed` is a Windows-only backstop
+that posts the spacebar on to the host's root window. Any new child component
+needs the same treatment - the walk only runs once, in the constructor.
+
 ### Declicking
 
 Jumps are unavoidable (they are the effect). When the delay moves more than 2 ms
