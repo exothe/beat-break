@@ -101,7 +101,9 @@ hard splices do not click.
 Each slot button shows its name, cut off with an ellipsis when it does not fit;
 the tooltip has the slot number and the full name. Right-click a slot to rename
 it, or to put its factory name back. Names are saved with the session and with
-presets.
+presets. The same menu has **Copy automation value**, which puts the slot's
+parameter value as a percentage (e.g. `8.57`) on the clipboard, for hosts like
+FL Studio whose automation clips only take a percentage.
 
 All knobs, both slot selectors and both enables are host-automatable
 parameters. Curves themselves are saved with the session (all 72 slots), as are

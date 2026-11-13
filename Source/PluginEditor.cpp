@@ -280,17 +280,21 @@ BeatBreakEditor::BeatBreakEditor (BeatBreakProcessor& p)
     addAndMakeVisible (volTension);
     addAndMakeVisible (mix);
 
-    timeSlots.onSlotClicked = [this] (int slot)
+    // A bare setValueNotifyingHost is not a user edit to the host: without the
+    // gesture around it FL's "Last tweaked" never sees the slot change, so the
+    // pattern switch cannot be linked to automation.
+    const auto selectSlot = [this] (const char* paramID, int slot)
     {
-        if (auto* param = proc.apvts.getParameter ("timeSlot"))
+        if (auto* param = proc.apvts.getParameter (paramID))
+        {
+            param->beginChangeGesture();
             param->setValueNotifyingHost (param->convertTo0to1 ((float) slot));
+            param->endChangeGesture();
+        }
     };
 
-    volumeSlots.onSlotClicked = [this] (int slot)
-    {
-        if (auto* param = proc.apvts.getParameter ("volSlot"))
-            param->setValueNotifyingHost (param->convertTo0to1 ((float) slot));
-    };
+    timeSlots.onSlotClicked   = [selectSlot] (int slot) { selectSlot ("timeSlot", slot); };
+    volumeSlots.onSlotClicked = [selectSlot] (int slot) { selectSlot ("volSlot", slot); };
 
     timeSlots.onSlotRightClicked   = [this] (int slot) { showSlotMenu (true, slot); };
     volumeSlots.onSlotRightClicked = [this] (int slot) { showSlotMenu (false, slot); };
@@ -373,17 +377,27 @@ void BeatBreakEditor::showSlotMenu (bool timeCurve, int slot)
                                        : FactoryPatterns::getVolumeName (slot);
     const auto renamed = proc.getSlotName (timeCurve, slot) != factoryName;
 
+    // Hosts like FL only take a percentage in an automation clip. The choice
+    // parameter rounds to the nearest slot, so two decimals land exactly.
+    juce::String percent;
+    if (auto* param = proc.apvts.getParameter (timeCurve ? "timeSlot" : "volSlot"))
+        percent = juce::String (param->convertTo0to1 ((float) slot) * 100.0f, 2);
+
     juce::PopupMenu menu;
     menu.addSectionHeader (proc.getSlotName (timeCurve, slot));
     menu.addItem (1, "Rename...");
     menu.addItem (2, "Use factory name (" + factoryName + ")", renamed);
+    menu.addSeparator();
+    menu.addItem (3, "Copy automation value (" + percent + "%)", percent.isNotEmpty());
 
-    menu.showMenuAsync (juce::PopupMenu::Options(), [this, timeCurve, slot] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, timeCurve, slot, percent] (int result)
     {
         if (result == 1)
             renameSlot (timeCurve, slot);
         else if (result == 2)
             proc.setSlotName (timeCurve, slot, {});
+        else if (result == 3)
+            juce::SystemClipboard::copyTextToClipboard (percent);
     });
 }
 
